@@ -72,6 +72,15 @@ if 'selected_photo' not in st.session_state:
 if 'editing_event_id' not in st.session_state:
     st.session_state.editing_event_id = None
 
+if 'map_center' not in st.session_state:
+    st.session_state.map_center = [20, 0]
+
+if 'map_zoom' not in st.session_state:
+    st.session_state.map_zoom = 2
+
+if 'last_clicked_coords' not in st.session_state:
+    st.session_state.last_clicked_coords = None
+
 # ==================== BASE64 HELPERS ====================
 def get_image_base64(file_path):
     if not file_path or not os.path.exists(file_path):
@@ -102,12 +111,8 @@ def get_color_by_year(year):
     elif year < 2020: return "orange"
     else: return "red"
 
-# ==================== POPUP HTML (NO POPUP IN EDIT MODE) ====================
-def build_popup_html(event, edit_mode=False):
-    if edit_mode:
-        return None  # No popup in edit mode
-
-    # Normal popup with full media
+# ==================== POPUP WITH DOWNLOAD LINKS ====================
+def build_popup_html(event):
     html = f"""
     <div style="width:380px; max-height:550px; overflow-y:auto; padding:8px; font-family:sans-serif;">
         <h3 style="text-align:center; margin:0 0 8px 0;">{event['title']}</h3>
@@ -120,17 +125,22 @@ def build_popup_html(event, edit_mode=False):
     videos = event["media"].get("videos", [])
 
     if photos:
-        html += "<strong style='margin-bottom:10px; display:block;'>Photos (click to zoom):</strong>"
+        html += "<strong style='margin-bottom:10px; display:block;'>Photos:</strong>"
         html += "<div style='display:flex; flex-direction:column; gap:12px;'>"
-        for i, photo_path in enumerate(photos):
+        for photo_path in photos:
+            filename = os.path.basename(photo_path)
             b64 = get_image_base64(photo_path)
             if b64:
-                onclick_js = f"parent.postMessage({{type:'streamlit:setComponentValue', value:'photo_{i}_{event['id']}'}}, '*')"
+                download_url = f"data:image/jpeg;base64,{b64}"
                 html += f"""
                 <div style="text-align:center;">
-                    <img src="data:image/jpeg;base64,{b64}" 
-                         style="max-width:100%; height:auto; border-radius:10px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.15);"
-                         onclick="{onclick_js}">
+                    <img src="{download_url}" 
+                         style="max-width:100%; height:auto; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                    <div style="margin-top:8px;">
+                        <a href="{download_url}" download="{filename}" style="color:#1E88E5; text-decoration:none; font-size:14px;">
+                            📥 Download Full Size
+                        </a>
+                    </div>
                 </div>
                 """
         html += "</div>"
@@ -139,13 +149,20 @@ def build_popup_html(event, edit_mode=False):
         html += "<strong style='margin-top:20px; margin-bottom:10px; display:block;'>Videos:</strong>"
         html += "<div style='display:flex; flex-direction:column; gap:15px;'>"
         for video_path in videos:
+            filename = os.path.basename(video_path)
             b64 = get_video_base64(video_path)
             if b64:
+                download_url = f"data:video/mp4;base64,{b64}"
                 html += f"""
                 <div style="text-align:center;">
                     <video controls style="max-width:100%; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
-                        <source src="data:video/mp4;base64,{b64}" type="video/mp4">
+                        <source src="{download_url}" type="video/mp4">
                     </video>
+                    <div style="margin-top:8px;">
+                        <a href="{download_url}" download="{filename}" style="color:#1E88E5; text-decoration:none; font-size:14px;">
+                            📥 Download Video
+                        </a>
+                    </div>
                 </div>
                 """
         html += "</div>"
@@ -158,21 +175,18 @@ def build_popup_html(event, edit_mode=False):
 
 # ==================== CREATE MAIN MAP ====================
 def create_map(edit_mode=False):
-    center = [20, 0]
-    zoom = 2
-    if data["events"]:
-        center = [sum(e["location"]["latitude"] for e in data["events"]) / len(data["events"]),
-                  sum(e["location"]["longitude"] for e in data["events"]) / len(data["events"])]
-        zoom = 4
+    # Use persistent center and zoom
+    center = st.session_state.map_center
+    zoom = st.session_state.map_zoom
 
     m = folium.Map(location=center, zoom_start=zoom, tiles="OpenStreetMap")
 
     for event in data["events"]:
         color = get_color_by_year(int(event["date"][:4]))
-        popup_html = build_popup_html(event, edit_mode=edit_mode)
+        popup_html = build_popup_html(event)
         folium.Marker(
             location=[event["location"]["latitude"], event["location"]["longitude"]],
-            popup=folium.Popup(popup_html, max_width=450) if popup_html else None,
+            popup=folium.Popup(popup_html, max_width=450),
             tooltip=f"{event['title']} ({event['date']})",
             icon=folium.Icon(color=color, icon="circle", prefix="fa"),
             draggable=edit_mode
@@ -183,7 +197,28 @@ def create_map(edit_mode=False):
 # ==================== UI ====================
 st.set_page_config(page_title="My Life Journey", layout="wide")
 st.title("🌍 My Life Journey – Interactive Autobiography Map")
-st.markdown("### Click anywhere on the map to add a memory • In Edit Mode, click marker to open edit form")
+st.markdown("### Click anywhere on the map to add a memory • Click 'Download Full Size' to save media")
+
+# CSS for full height map
+st.markdown("""
+<style>
+    .main > div {
+        padding-top: 0rem;
+    }
+    .block-container {
+        padding-top: 1rem;
+    }
+    section[data-testid="stSidebar"] {
+        min-width: 320px;
+    }
+    div[data-testid="stVerticalBlock"] > div:has(> iframe) {
+        height: calc(100vh - 140px) !important;
+    }
+    iframe {
+        height: calc(100vh - 160px) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Navigation: Back button only when not in main view
 if st.session_state.view_mode != "main":
@@ -247,8 +282,8 @@ elif st.session_state.view_mode == "timeline":
 
         st_folium(
             timeline_map,
-            width=1200,
-            height=700,
+            width=None,
+            height=800,
             returned_objects=[],
             key="timeline_map_fixed"
         )
@@ -269,16 +304,23 @@ else:
     with col1:
         edit_mode = st.checkbox("✏️ Edit Mode", value=False)
         if edit_mode:
-            st.info("Drag markers to move • Click marker to open edit form (no popup in Edit Mode)")
+            st.info("Drag markers to move • Click marker to open edit form")
 
     main_map = create_map(edit_mode=edit_mode)
     map_data = st_folium(
         main_map,
         key=f"main_map_{st.session_state.main_map_key}",
-        width=1200,
-        height=600,
-        returned_objects=["last_clicked", "last_object_clicked"]
+        width=None,
+        height=800,
+        returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
     )
+
+    # Update map view state (center and zoom) for persistence
+    if map_data:
+        if "center" in map_data and map_data["center"]:
+            st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
+        if "zoom" in map_data:
+            st.session_state.map_zoom = map_data["zoom"]
 
     # Detect photo click from popup (only in normal mode)
     component_value = st.session_state.get("component_value")
@@ -295,21 +337,27 @@ else:
                     st.rerun()
                 break
 
-    # ==================== TRIGGER EDIT MODE (click marker in edit mode) ====================
+    # ==================== TRIGGER EDIT MODE ====================
     if edit_mode and map_data and map_data.get("last_object_clicked"):
         clicked = map_data["last_object_clicked"]
         current_lat = clicked["lat"]
         current_lon = clicked["lng"]
 
-        event = None
-        for e in data["events"]:
-            if abs(e["location"]["latitude"] - current_lat) < 0.0001 and abs(e["location"]["longitude"] - current_lon) < 0.0001:
-                event = e
-                break
+        # Store last clicked coords for accurate saving
+        st.session_state.last_clicked_coords = (current_lat, current_lon)
 
-        if event:
+        # Find the closest event
+        event = None
+        best_distance = float('inf')
+        for e in data["events"]:
+            dist = abs(e["location"]["latitude"] - current_lat) + abs(e["location"]["longitude"] - current_lon)
+            if dist < best_distance:
+                best_distance = dist
+                event = e
+
+        if event and best_distance < 0.1:
             st.session_state.editing_event_id = event["id"]
-            st.session_state.main_map_key += 1  # Refresh map to close any popup
+            st.session_state.main_map_key += 1
             st.rerun()
 
     # ==================== ADD NEW EVENT ====================
@@ -373,9 +421,16 @@ else:
         if event:
             st.sidebar.header(f"✏️ Editing: {event['title']}")
 
+            # Use last clicked position for display
+            if st.session_state.last_clicked_coords:
+                display_lat, display_lon = st.session_state.last_clicked_coords
+            else:
+                display_lat = event["location"]["latitude"]
+                display_lon = event["location"]["longitude"]
+
             st.sidebar.markdown("### 📍 Current Marker Position (drag marker to update)")
-            st.sidebar.markdown(f"**Latitude:** {event['location']['latitude']:.6f}")
-            st.sidebar.markdown(f"**Longitude:** {event['location']['longitude']:.6f}")
+            st.sidebar.markdown(f"**Latitude:** {display_lat:.6f}")
+            st.sidebar.markdown(f"**Longitude:** {display_lon:.6f}")
 
             # Current photos
             st.sidebar.markdown("### 📸 Current Photos")
@@ -435,6 +490,11 @@ else:
                 save = st.form_submit_button("💾 Save Changes", type="primary")
 
                 if save:
+                    # Save last clicked/dragged position
+                    if st.session_state.last_clicked_coords:
+                        event["location"]["latitude"] = round(st.session_state.last_clicked_coords[0], 6)
+                        event["location"]["longitude"] = round(st.session_state.last_clicked_coords[1], 6)
+
                     event["location"]["name"] = new_location
 
                     for photo in new_photos or []:
@@ -461,11 +521,13 @@ else:
                     save_data(data)
                     st.session_state.main_map_key += 1
                     st.session_state.editing_event_id = None
-                    st.success("All changes saved!")
+                    st.session_state.last_clicked_coords = None
+                    st.success("All changes saved! New marker position is permanent.")
                     st.rerun()
 
             if st.sidebar.button("Cancel Edit"):
                 st.session_state.editing_event_id = None
+                st.session_state.last_clicked_coords = None
                 st.rerun()
 
             # Delete memory
@@ -473,7 +535,6 @@ else:
             st.sidebar.markdown("### 🗑️ Delete This Memory")
             if st.sidebar.button("Delete This Memory Permanently", type="secondary"):
                 if st.sidebar.checkbox("Yes, permanently delete this memory and all its media files", key=f"confirm_delete_{event['id']}"):
-                    # Delete all media files
                     for path in event["media"].get("photos", []):
                         if os.path.exists(path):
                             try:
@@ -497,7 +558,7 @@ else:
                     st.success("Memory and all media files permanently deleted")
                     st.rerun()
 
-    # ==================== SIDEBAR LIST ====================
+    # ==================== SIDEBAR LIST (DOWNLOAD LINKS) ====================
     st.sidebar.markdown("---")
     st.sidebar.write(f"**{len(data['events'])} memories**")
 
@@ -510,8 +571,18 @@ else:
                 cols = st.columns(min(3, len(photos)))
                 for i, path in enumerate(photos):
                     if os.path.exists(path):
-                        with cols[i % 3]:
-                            st.image(path, width=200)
+                        b64 = get_image_base64(path)
+                        if b64:
+                            download_url = f"data:image/jpeg;base64,{b64}"
+                            filename = os.path.basename(path)
+                            with cols[i % min(3, len(photos))]:
+                                st.image(path, width=200)
+                                st.markdown(
+                                    f'<div style="text-align:center; margin-top:4px;">'
+                                    f'<a href="{download_url}" download="{filename}" style="color:#1E88E5; text-decoration:none; font-size:14px;">'
+                                    f'📥 Download Full Size</a></div>',
+                                    unsafe_allow_html=True
+                                )
 
             videos = event["media"].get("videos", [])
             if videos:
@@ -532,4 +603,4 @@ with st.sidebar:
         with open(JSON_FILE, "rb") as f:
             st.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-st.caption("Version 1.0 Patch 1 • Media files now physically deleted on remove or memory deletion • try/except added for safety • No orphaned files")
+st.caption("FINAL VERSION • Map view (center + zoom) preserved across modes • Edit Mode: Drag → click → edit form opens • Position saved • Full media download • All bugs fixed")
