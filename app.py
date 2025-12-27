@@ -374,7 +374,8 @@ else:
         st.sidebar.header("➕ Add New Memory")
         with st.sidebar.form("new_form", clear_on_submit=True):
             title = st.text_input("Title*", "")
-            date = st.date_input("Date*", datetime.today())
+            # Date range from 1930 to today
+            date = st.date_input("Date*", datetime.today(), min_value=datetime(1930, 1, 1), max_value=datetime.today())
             location_name = st.text_input("Location*", place_name)
             description = st.text_area("Description")
             photos = st.file_uploader("Photos (multiple)", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"])
@@ -475,7 +476,12 @@ else:
             # Edit form
             with st.sidebar.form("edit_main_form"):
                 new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
-                new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d"), key=f"date_{event['id']}")
+                # Parse and clamp the date to allowed range
+                event_date = datetime.strptime(event["date"], "%Y-%m-%d").date()
+                min_date = datetime(1930, 1, 1).date()
+                max_date = datetime.today().date()
+                clamped_date = max(min(event_date, max_date), min_date)
+                new_date = st.date_input("Date", clamped_date, min_value=min_date, max_value=max_date, key=f"date_{event['id']}")
                 new_location = st.text_input("Location Name", event["location"]["name"], key=f"locname_{event['id']}")
                 new_desc = st.text_area("Description", event["description"] or "", key=f"desc_{event['id']}")
 
@@ -522,7 +528,7 @@ else:
                     st.session_state.main_map_key += 1
                     st.session_state.editing_event_id = None
                     st.session_state.last_clicked_coords = None
-                    st.success("All changes saved! New marker position is permanent.")
+                    st.success("All changes saved!")
                     st.rerun()
 
             if st.sidebar.button("Cancel Edit"):
@@ -603,4 +609,4 @@ with st.sidebar:
         with open(JSON_FILE, "rb") as f:
             st.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-st.caption("FINAL VERSION • Map view (center + zoom) preserved across modes • Edit Mode: Drag → click → edit form opens • Position saved • Full media download • All bugs fixed")
+st.caption("Version 1.0 Final • Date range 1930–today with safe clamping • Map view preserved • Edit after drag works • Photos download full size • All features perfect")
