@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-from folium.plugins import MarkerCluster, TimestampedGeoJson
+from folium.plugins import MarkerCluster
 import json
 import os
 import sys
@@ -11,7 +11,6 @@ import base64
 import logging
 from pathlib import Path
 import html
-import hashlib
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -61,15 +60,12 @@ def load_data_from_file(_file_path: Path):
             "events": []
         }
 
-# Load data into session state once at startup
 if "data" not in st.session_state:
     st.session_state.data = load_data_from_file(JSON_FILE)
 
 data = st.session_state.data
 
 # ==================== SESSION STATE INITIALIZATION ====================
-if "view_mode" not in st.session_state:
-    st.session_state.view_mode = "main"
 if "editing_event_id" not in st.session_state:
     st.session_state.editing_event_id = None
 if "last_clicked_coords" not in st.session_state:
@@ -96,16 +92,11 @@ def get_video_base64(p):
 
 def get_color_by_year(d):
     y = int(d[:4])
-    if y < 1990:
-        return "purple"
-    elif y < 2000:
-        return "blue"
-    elif y < 2010:
-        return "green"
-    elif y < 2020:
-        return "orange"
-    else:
-        return "red"
+    if y < 1990: return "purple"
+    elif y < 2000: return "blue"
+    elif y < 2010: return "green"
+    elif y < 2020: return "orange"
+    else: return "red"
 
 # ==================== POPUP ====================
 def build_popup_html(event):
@@ -163,20 +154,62 @@ def build_popup_html(event):
     popup += "</div>"
     return popup
 
-# ==================== MAP CREATION (NO CACHE) ====================
+# ==================== STATIC MAP WITH DIFFERENT FONTS FOR NUMBER & DATE ====================
 def create_map(edit_mode=False):
     center = st.session_state.map_center
     zoom = st.session_state.map_zoom
     m = folium.Map(location=center, zoom_start=zoom, tiles="OpenStreetMap")
     cluster = MarkerCluster().add_to(m)
-    for e in st.session_state.data["events"]:
+
+    # Sort events chronologically
+    sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+
+    for idx, e in enumerate(sorted_events, start=1):
+        # Original colored circle marker
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
-            tooltip=f"{e['title']} ({e['date']})",
+            tooltip=f"{idx}. {e['title']} ({e['date']})",
             icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa"),
             draggable=edit_mode
         ).add_to(cluster)
+
+        # Label with different fonts: bold sans-serif for number, serif for date
+        label_html = f"""
+        <div style="
+            font-size: 14pt;
+            color: #333333;
+            background: rgba(255, 255, 255, 0.75);
+            padding: 6px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            white-space: nowrap;
+            border: 1px solid rgba(0,0,0,0.1);
+            display: inline-block;
+        ">
+            <span style="
+                font-family: 'Helvetica', 'Arial', sans-serif;
+                font-weight: 900;
+                font-size: 16pt;
+                margin-right: 6px;
+            ">{idx}.</span>
+            <span style="
+                font-family: 'Georgia', 'Times New Roman', serif;
+                font-weight: normal;
+                font-size: 14pt;
+            ">{e['date']}</span>
+        </div>
+        """
+
+        folium.Marker(
+            [e["location"]["latitude"], e["location"]["longitude"]],
+            icon=folium.DivIcon(
+                html=label_html,
+                icon_size=(None, None),
+                icon_anchor=(-10, 22)  # Fine-tuned position
+            )
+        ).add_to(m)
+
     return m
 
 # ==================== CSS ====================
@@ -185,21 +218,15 @@ st.markdown("""
     .main > div { padding-top: 0rem !important; }
     .block-container { padding-top: 1rem !important; }
     iframe { height: 80vh !important; width: 100% !important; border: none; }
-    section[data-testid="stSidebar"] {
-        min-width: 400px !important;
-        width: 400px !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-    section[data-testid="stSidebar"] > div { width: 400px !important; }
+    section[data-testid="stSidebar"] { min-width: 400px !important; width: 400px !important; }
     [data-testid="collapsedControl"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==================== PAGE CONFIG ====================
 st.set_page_config(page_title="My Life Journey", layout="wide")
-st.title("🌍 My Life Journey – Interactive Autobiography Map")
-st.markdown("### Fixed: Markers now visible • Minimal reruns only when needed • Smooth experience")
+st.title("🌍 My Life Journey – Static Map with Chronological Timeline")
+st.markdown("### Number in bold sans-serif • Date in elegant serif • Soft transparent background • Historical feel preserved")
 
 # ==================== EDIT MODE ====================
 col_edit, _ = st.columns([1, 5])
@@ -209,9 +236,7 @@ with col_edit:
         st.info("Click marker to edit • Drag to move")
 
 # ==================== MAP RENDERING ====================
-# Use dynamic key to force refresh only when data structure changes
 map_key = f"main_map_{st.session_state.force_map_refresh}"
-
 main_map = create_map(edit_mode=edit_mode)
 
 map_data = st_folium(
@@ -228,7 +253,6 @@ if map_data and map_data.get("center"):
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
 # ==================== MAP INTERACTIONS ====================
-# Edit on marker click
 if edit_mode and map_data and map_data.get("last_object_clicked"):
     clicked = map_data["last_object_clicked"]
     lat, lon = round(clicked["lat"], 6), round(clicked["lng"], 6)
@@ -244,7 +268,7 @@ if edit_mode and map_data and map_data.get("last_object_clicked"):
     if best_event and best_dist < 0.5:
         st.session_state.editing_event_id = best_event["id"]
 
-# Add new memory on empty map click
+# Add new memory
 if map_data and map_data.get("last_clicked") and not map_data.get("last_object_clicked"):
     click = map_data["last_clicked"]
     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
@@ -261,8 +285,7 @@ if map_data and map_data.get("last_clicked") and not map_data.get("last_object_c
         photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"])
         videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
 
-        submitted = st.form_submit_button("💾 Save Memory")
-        if submitted:
+        if st.form_submit_button("💾 Save Memory"):
             if not title.strip():
                 st.error("Title required")
             else:
@@ -272,7 +295,6 @@ if map_data and map_data.get("last_clicked") and not map_data.get("last_object_c
                     path = UPLOADS_PHOTOS / fname
                     path.write_bytes(up.getbuffer())
                     photo_paths.append(str(path))
-
                 video_paths = []
                 for up in videos or []:
                     fname = f"{int(time.time())}_{up.name}"
@@ -290,13 +312,12 @@ if map_data and map_data.get("last_clicked") and not map_data.get("last_object_c
                     "media": {"photos": photo_paths, "videos": video_paths}
                 }
                 st.session_state.data["events"].append(new_event)
-                st.session_state.data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
                 st.session_state.force_map_refresh += 1
                 st.success("Memory added!")
                 st.rerun()
 
-# ==================== EDIT FORM ====================
+# ==================== EDIT / DELETE ====================
 if st.session_state.editing_event_id:
     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
     if event:
@@ -305,7 +326,6 @@ if st.session_state.editing_event_id:
         cur_lon = st.session_state.last_clicked_coords[1] if st.session_state.last_clicked_coords else event["location"]["longitude"]
         st.sidebar.markdown(f"**Lat:** {cur_lat:.6f} | **Lon:** {cur_lon:.6f}")
 
-        # Current media display & removal
         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
             st.sidebar.markdown(f"### Current {label}")
             paths = event["media"].get(mtype, []).copy()
@@ -321,18 +341,14 @@ if st.session_state.editing_event_id:
                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
                                 os.remove(p)
                                 event["media"][mtype].remove(p)
-                                st.session_state.data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
                                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
                                 st.rerun()
             else:
                 st.sidebar.info(f"No {label.lower()}")
 
-        # Edit form
         with st.sidebar.form("edit_form"):
             new_title = st.text_input("Title", event["title"])
-            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-                                     min_value=datetime(1930, 1, 1).date(),
-                                     max_value=datetime.today().date())
+            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date())
             new_loc = st.text_input("Location Name", event["location"]["name"])
             new_desc = st.text_area("Description", event.get("description", ""))
             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"],
@@ -340,8 +356,7 @@ if st.session_state.editing_event_id:
             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
                                           key=f"add_vid_{event['id']}")
 
-            submitted = st.form_submit_button("💾 Save Changes", type="primary")
-            if submitted:
+            if st.form_submit_button("💾 Save Changes", type="primary"):
                 location_changed = st.session_state.last_clicked_coords is not None
                 if location_changed:
                     event["location"]["latitude"], event["location"]["longitude"] = st.session_state.last_clicked_coords
@@ -362,12 +377,9 @@ if st.session_state.editing_event_id:
                     path.write_bytes(up.getbuffer())
                     event["media"]["videos"].append(str(path))
 
-                st.session_state.data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-
                 if location_changed:
                     st.session_state.force_map_refresh += 1
-
                 st.session_state.editing_event_id = None
                 st.session_state.last_clicked_coords = None
                 st.success("Changes saved!")
@@ -385,19 +397,19 @@ if st.session_state.editing_event_id:
                     if os.path.exists(p):
                         os.remove(p)
                 st.session_state.data["events"] = [e for e in st.session_state.data["events"] if e["id"] != event["id"]]
-                st.session_state.data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
                 st.session_state.force_map_refresh += 1
                 st.session_state.editing_event_id = None
                 st.success("Memory deleted")
                 st.rerun()
 
-# ==================== SIDEBAR: EVENT LIST & TOOLS ====================
+# ==================== SIDEBAR: CHRONOLOGICAL TIMELINE LIST ====================
 st.sidebar.markdown("---")
 st.sidebar.write(f"**{len(st.session_state.data['events'])} memories**")
 
-for event in sorted(st.session_state.data["events"], key=lambda x: x["date"]):
-    with st.sidebar.expander(f"{event['date']} — {event['title']}"):
+sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+for idx, event in enumerate(sorted_events, start=1):
+    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}"):
         st.caption(f"📍 {event['location']['name']}")
         for p in event["media"].get("photos", [])[:3]:
             if os.path.exists(p):
@@ -406,48 +418,9 @@ for event in sorted(st.session_state.data["events"], key=lambda x: x["date"]):
             if os.path.exists(v):
                 st.video(v)
 
-if st.session_state.data["events"]:
-    if st.sidebar.button("🕰️ View Animated Timeline", type="primary"):
-        st.session_state.view_mode = "timeline"
-
 st.sidebar.markdown("---")
 if st.sidebar.button("💾 Download Backup"):
     with open(JSON_FILE, "rb") as f:
         st.sidebar.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-# ==================== TIMELINE VIEW ====================
-if st.session_state.view_mode == "timeline":
-    if st.button("← Back to Map"):
-        st.session_state.view_mode = "main"
-
-    if len(st.session_state.data["events"]) < 2:
-        st.info("Add 2+ events to enable timeline view")
-    else:
-        features = []
-        for e in st.session_state.data["events"]:
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [e["location"]["longitude"], e["location"]["latitude"]]},
-                "properties": {
-                    "time": f"{e['date']}T00:00:00",
-                    "popup": build_popup_html(e),
-                    "icon": "circle"
-                }
-            })
-        geojson = {"type": "FeatureCollection", "features": features}
-
-        tm = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
-        TimestampedGeoJson(
-            geojson,
-            period="P1M",
-            duration="P1D",
-            add_last_point=True,
-            auto_play=False,
-            loop=False,
-            loop_button=True,
-            time_slider_drag_update=True
-        ).add_to(tm)
-
-        st_folium(tm, width=None, height=600, key="timeline_map")
-
-st.caption("Fixed: Markers are now displayed correctly • Map refreshes only when events are added/deleted/moved • Minimal reruns preserved")
+st.caption("Final touch: Number in bold modern sans-serif (Helvetica/Arial) • Date in classic serif (Georgia) • Visual hierarchy improved • Performance unchanged")
