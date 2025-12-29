@@ -28,29 +28,11 @@ UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
 JSON_FILE = BASE_DIR / "life_events.json"
 
-# ==================== INITIAL DATA SETUP ====================
-if not JSON_FILE.exists():
-    initial = {
-        "autobiography": {
-            "title": "My Life Journey",
-            "author": "Your Name",
-            "created_date": datetime.now().strftime("%Y-%m-%d"),
-            "last_updated": datetime.now().strftime("%Y-%m-%d")
-        },
-        "events": []
-    }
-    JSON_FILE.write_text(json.dumps(initial, indent=4), encoding="utf-8")
 
-# ==================== CACHED DATA LOADING ====================
-@st.cache_data(show_spinner=False)
-def load_data_from_file(_file_path: Path):
-    try:
-        data = json.loads(_file_path.read_text(encoding="utf-8"))
-        data["events"] = sorted(data["events"], key=lambda x: x["date"])
-        return data
-    except Exception as e:
-        logger.error(f"Failed to load data: {e}")
-        return {
+# ==================== ROBUST DATA INITIALIZATION ====================
+def ensure_valid_json():
+    if not JSON_FILE.exists() or JSON_FILE.stat().st_size == 0:
+        default_data = {
             "autobiography": {
                 "title": "My Life Journey",
                 "author": "Your Name",
@@ -59,6 +41,37 @@ def load_data_from_file(_file_path: Path):
             },
             "events": []
         }
+        JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+
+
+ensure_valid_json()
+
+
+# ==================== CACHED & SAFE DATA LOADING ====================
+@st.cache_data(show_spinner=False)
+def load_data_from_file(_file_path: Path):
+    try:
+        text = _file_path.read_text(encoding="utf-8")
+        if not text.strip():
+            raise ValueError("File is empty")
+        data = json.loads(text)
+        data["events"] = sorted(data["events"], key=lambda x: x.get("date", "0000-00-00"))
+        return data
+    except Exception as e:
+        logger.warning(f"Corrupted data file detected: {e}. Resetting to default.")
+        st.warning("Data file was corrupted or empty. It has been reset to default.")
+        default_data = {
+            "autobiography": {
+                "title": "My Life Journey",
+                "author": "Your Name",
+                "created_date": datetime.now().strftime("%Y-%m-%d"),
+                "last_updated": datetime.now().strftime("%Y-%m-%d")
+            },
+            "events": []
+        }
+        _file_path.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        return default_data
+
 
 if "data" not in st.session_state:
     st.session_state.data = load_data_from_file(JSON_FILE)
@@ -68,14 +81,13 @@ data = st.session_state.data
 # ==================== SESSION STATE INITIALIZATION ====================
 if "editing_event_id" not in st.session_state:
     st.session_state.editing_event_id = None
-if "last_clicked_coords" not in st.session_state:
-    st.session_state.last_clicked_coords = None
 if "map_center" not in st.session_state:
     st.session_state.map_center = [20, 0]
 if "map_zoom" not in st.session_state:
     st.session_state.map_zoom = 2
 if "force_map_refresh" not in st.session_state:
     st.session_state.force_map_refresh = 0
+
 
 # ==================== HELPERS ====================
 def get_image_base64(p):
@@ -84,19 +96,27 @@ def get_image_base64(p):
         return None
     return base64.b64encode(path.read_bytes()).decode('utf-8')
 
+
 def get_video_base64(p):
     path = Path(p)
     if not path.exists() or path.stat().st_size > 15 * 1024 * 1024:
         return None
     return base64.b64encode(path.read_bytes()).decode('utf-8')
 
+
 def get_color_by_year(d):
     y = int(d[:4])
-    if y < 1990: return "purple"
-    elif y < 2000: return "blue"
-    elif y < 2010: return "green"
-    elif y < 2020: return "orange"
-    else: return "red"
+    if y < 1990:
+        return "purple"
+    elif y < 2000:
+        return "blue"
+    elif y < 2010:
+        return "green"
+    elif y < 2020:
+        return "orange"
+    else:
+        return "red"
+
 
 # ==================== POPUP ====================
 def build_popup_html(event):
@@ -154,15 +174,14 @@ def build_popup_html(event):
     popup += "</div>"
     return popup
 
-# ==================== STATIC MAP WITH AUTO-FIT BOUNDS ====================
-def create_map(edit_mode=False):
+
+# ==================== MAP CREATION ====================
+def create_map():
     events = st.session_state.data["events"]
     if not events:
-        # Fallback to world view if no events
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
         return m
 
-    # Collect coordinates
     coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in events]
 
     m = folium.Map(tiles="OpenStreetMap")
@@ -175,8 +194,7 @@ def create_map(edit_mode=False):
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
             tooltip=f"{idx}. {e['title']} ({e['date']})",
-            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa"),
-            draggable=edit_mode
+            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
         ).add_to(cluster)
 
         label_html = f"""
@@ -191,17 +209,8 @@ def create_map(edit_mode=False):
             border: 1px solid rgba(0,0,0,0.1);
             display: inline-block;
         ">
-            <span style="
-                font-family: 'Helvetica', 'Arial', sans-serif;
-                font-weight: 900;
-                font-size: 16pt;
-                margin-right: 6px;
-            ">{idx}.</span>
-            <span style="
-                font-family: 'Georgia', 'Times New Roman', serif;
-                font-weight: normal;
-                font-size: 14pt;
-            ">{e['date']}</span>
+            <span style="font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 16pt; margin-right: 6px;">{idx}.</span>
+            <span style="font-family: 'Georgia', 'Times New Roman', serif; font-weight: normal; font-size: 14pt;">{e['date']}</span>
         </div>
         """
 
@@ -214,30 +223,39 @@ def create_map(edit_mode=False):
             )
         ).add_to(m)
 
-    # Fit map to bounds of all markers with padding
     m.fit_bounds(coords, padding=(50, 50))
-
     return m
 
-# ==================== CSS FOR TIMELINE WITH LABEL FRAME HOVER ====================
+
+# ==================== CSS ====================
 st.markdown("""
 <style>
     .main > div { padding-top: 0rem !important; }
-    .block-container { padding-top: 1rem !important; }
-    iframe { height: 75vh !important; width: 100% !important; border: none; }
-    section[data-testid="stSidebar"] { min-width: 400px !important; width: 400px !important; }
-    [data-testid="collapsedControl"] { display: none !important; }
+    .block-container { padding-top: 0.5rem !important; padding-bottom: 1rem !important; }
+
+    iframe {
+        height: 95vh !important;
+        width: 100% !important;
+        border: none;
+        min-height: 600px;
+    }
+
+    section[data-testid="stSidebar"] { 
+        min-width: 400px !important; 
+        width: 400px !important; 
+    }
+
     .timeline-container {
         margin-bottom: 20px;
         padding: 15px;
-        background: linear_gradient(to bottom, #f0f4f8, #e0e8f0);
+        background: linear-gradient(to bottom, #f0f4f8, #e0e8f0);
         border-radius: 12px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.12);
     }
     .timeline-bar {
         position: relative;
         height: 8px;
-        background: linear_gradient(to right, #a0c4ff, #9ec5fe, #bdb2ff, #ffc6ff);
+        background: linear-gradient(to right, #a0c4ff, #9ec5fe, #bdb2ff, #ffc6ff);
         border-radius: 4px;
         margin: 40px 0 15px 0;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
@@ -285,48 +303,40 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         z-index: 1000;
     }
-    .timeline-label-frame:hover .timeline-label strong {
-        font-size: 18px;
-    }
-    .timeline-label-frame:hover .timeline-label span {
-        font-size: 20px;
+    .timeline-label-frame:hover .timeline-label strong { font-size: 18px; }
+    .timeline-label-frame:hover .timeline-label span { font-size: 20px; font-weight: bold; color: #1a1a1a; }
+    .timeline-label-frame:hover .timeline-title { display: block; }
+    .timeline-label strong { font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 15px; color: #1a1a1a; }
+    .timeline-label span { font-family: 'Georgia', 'Times New Roman', serif; color: #444; }
+    .timeline-title {
+        display: none;
+        font-size: 14px;
         font-weight: bold;
         color: #1a1a1a;
-    }
-    .timeline-label strong {
-        font-family: 'Helvetica', 'Arial', sans-serif;
-        font-weight: 900;
-        font-size: 15px;
-        color: #1a1a1a;
-        transition: font-size 0.3s ease;
-    }
-    .timeline-label span {
-        font-family: 'Georgia', 'Times New Roman', serif;
-        color: #444;
-        transition: all 0.3s ease;
+        margin-top: 8px;
+        white-space: normal;
+        max-width: 200px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==================== PAGE CONFIG ====================
-st.set_page_config(page_title="My Life Journey", layout="wide")
+st.set_page_config(
+    page_title="My Life Journey",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 st.title("🌍 My Life Journey – Map with Colored Timeline")
 
-# ==================== EDIT MODE ====================
-col_edit, _ = st.columns([1, 5])
-with col_edit:
-    edit_mode = st.checkbox("✏️ Edit Mode", value=False)
-    if edit_mode:
-        st.info("Click marker to edit • Drag to move")
-
-# ==================== TIMELINE BAR ON TOP WITH LABEL FRAME HOVER ====================
+# ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
     sorted_events = sorted(data["events"], key=lambda x: x["date"])
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
 
     if dates:
-        min_date = min(dates) - timedelta(days=365*2)
-        max_date = max(dates) + timedelta(days=365*5)
+        min_date = min(dates) - timedelta(days=365 * 2)
+        max_date = max(dates) + timedelta(days=365 * 5)
         total_span = (max_date - min_date).days or 1
 
         st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
@@ -336,12 +346,14 @@ if data["events"]:
 
         for idx, (event, dt) in enumerate(zip(sorted_events, dates), start=1):
             position = ((dt - min_date).days / total_span) * 100
+            escaped_title = html.escape(event.get('title', 'Untitled'))
 
             timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
             timeline_html += f'''
             <div class="timeline-label-frame" style="left: {position}%;">
                 <div class="timeline-label">
                     <strong>{idx}.</strong> <span>{event["date"]}</span>
+                    <div class="timeline-title">{escaped_title}</div>
                 </div>
             </div>
             '''
@@ -350,64 +362,53 @@ if data["events"]:
         st.markdown(timeline_html, unsafe_allow_html=True)
 
         years_span = (max(dates) - min(dates)).days // 365
-        st.caption(f"Events span ~{years_span} years • Hover on label frame for enlarged date • Reliable even with overlap")
+        st.caption(f"Events span ~{years_span} years • Hover on label frame to show memory title")
 
         st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info("Add memories to see the extended timeline.")
 
-# ==================== MAP RENDERING WITH AUTO-FIT BOUNDS ====================
+# ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
-main_map = create_map(edit_mode=edit_mode)
+main_map = create_map()
 
 map_data = st_folium(
     main_map,
     key=map_key,
     width=None,
-    height=700,
-    returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
+    height=1200,
+    use_container_width=True,
+    returned_objects=["last_clicked", "center", "zoom"]
 )
 
-# Preserve user-panned/zoomed view after first load
 if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
-# ==================== MAP INTERACTIONS, EDIT, DELETE, SIDEBAR ====================
-# [All remaining code unchanged – add/edit/delete/sidebar as before]
-
-if edit_mode and map_data and map_data.get("last_object_clicked"):
-    clicked = map_data["last_object_clicked"]
-    lat, lon = round(clicked["lat"], 6), round(clicked["lng"], 6)
-    st.session_state.last_clicked_coords = (lat, lon)
-
-    best_event = None
-    best_dist = float('inf')
-    for e in st.session_state.data["events"]:
-        dist = abs(e["location"]["latitude"] - lat) + abs(e["location"]["longitude"] - lon)
-        if dist < best_dist:
-            best_dist = dist
-            best_event = e
-    if best_event and best_dist < 0.5:
-        st.session_state.editing_event_id = best_event["id"]
-
-if map_data and map_data.get("last_clicked") and not map_data.get("last_object_clicked"):
+# ==================== ADD NEW MEMORY ====================
+if map_data and map_data.get("last_clicked"):
     click = map_data["last_clicked"]
     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
     default_name = f"{lat:.5f}, {lon:.5f}"
 
     st.sidebar.header("➕ Add New Memory")
-    with st.sidebar.form("add_form"):
+    with st.sidebar.form("add_form", clear_on_submit=False):
         title = st.text_input("Title*", "")
         date = st.date_input("Date*", datetime.today(),
                              min_value=datetime(1930, 1, 1).date(),
-                             max_value=datetime.today().date())
+                             max_value=None)
         loc_name = st.text_input("Location Name*", default_name)
         description = st.text_area("Description")
         photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"])
         videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
 
-        if st.form_submit_button("💾 Save Memory"):
+        col_save, col_cancel = st.columns([1, 1])
+        with col_save:
+            save_clicked = st.form_submit_button("💾 Save Memory")
+        with col_cancel:
+            cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
+
+        if save_clicked:
             if not title.strip():
                 st.error("Title required")
             else:
@@ -439,13 +440,21 @@ if map_data and map_data.get("last_clicked") and not map_data.get("last_object_c
                 st.success("Memory added!")
                 st.rerun()
 
+        if cancel_clicked:
+            st.rerun()
+
+# ==================== EDITING EXISTING EVENT ====================
 if st.session_state.editing_event_id:
     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
     if event:
         st.sidebar.header(f"✏️ Editing: {event['title']}")
-        cur_lat = st.session_state.last_clicked_coords[0] if st.session_state.last_clicked_coords else event["location"]["latitude"]
-        cur_lon = st.session_state.last_clicked_coords[1] if st.session_state.last_clicked_coords else event["location"]["longitude"]
-        st.sidebar.markdown(f"**Lat:** {cur_lat:.6f} | **Lon:** {cur_lon:.6f}")
+
+        cur_lat = event["location"]["latitude"]
+        cur_lon = event["location"]["longitude"]
+        st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+
+        new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
+        new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
 
         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
             st.sidebar.markdown(f"### Current {label}")
@@ -462,14 +471,17 @@ if st.session_state.editing_event_id:
                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
                                 os.remove(p)
                                 event["media"][mtype].remove(p)
-                                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                                                     encoding="utf-8")
                                 st.rerun()
             else:
                 st.sidebar.info(f"No {label.lower()}")
 
         with st.sidebar.form("edit_form"):
             new_title = st.text_input("Title", event["title"])
-            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date())
+            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
+                                     min_value=datetime(1920, 1, 1).date(),
+                                     max_value=None)
             new_loc = st.text_input("Location Name", event["location"]["name"])
             new_desc = st.text_area("Description", event.get("description", ""))
             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"],
@@ -478,10 +490,8 @@ if st.session_state.editing_event_id:
                                           key=f"add_vid_{event['id']}")
 
             if st.form_submit_button("💾 Save Changes", type="primary"):
-                location_changed = st.session_state.last_clicked_coords is not None
-                if location_changed:
-                    event["location"]["latitude"], event["location"]["longitude"] = st.session_state.last_clicked_coords
-
+                event["location"]["latitude"] = new_lat
+                event["location"]["longitude"] = new_lon
                 event["title"] = new_title
                 event["date"] = new_date.strftime("%Y-%m-%d")
                 event["location"]["name"] = new_loc
@@ -499,37 +509,22 @@ if st.session_state.editing_event_id:
                     event["media"]["videos"].append(str(path))
 
                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-                if location_changed:
-                    st.session_state.force_map_refresh += 1
+                st.session_state.force_map_refresh += 1
                 st.session_state.editing_event_id = None
-                st.session_state.last_clicked_coords = None
                 st.success("Changes saved!")
                 st.rerun()
 
         if st.sidebar.button("Cancel Editing"):
             st.session_state.editing_event_id = None
-            st.session_state.last_clicked_coords = None
             st.rerun()
 
-        st.sidebar.markdown("---")
-        if st.sidebar.button("🗑️ Delete Memory Permanently", type="secondary"):
-            if st.sidebar.checkbox("Confirm permanent deletion", key=f"del_confirm_{event['id']}"):
-                for p in event["media"].get("photos", []) + event["media"].get("videos", []):
-                    if os.path.exists(p):
-                        os.remove(p)
-                st.session_state.data["events"] = [e for e in st.session_state.data["events"] if e["id"] != event["id"]]
-                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-                st.session_state.force_map_refresh += 1
-                st.session_state.editing_event_id = None
-                st.success("Memory deleted")
-                st.rerun()
-
+# ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.markdown("---")
 st.sidebar.write(f"**{len(st.session_state.data['events'])} memories**")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
-    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}"):
+    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}", expanded=False):
         st.caption(f"📍 {event['location']['name']}")
         for p in event["media"].get("photos", [])[:3]:
             if os.path.exists(p):
@@ -538,9 +533,53 @@ for idx, event in enumerate(sorted_events, start=1):
             if os.path.exists(v):
                 st.video(v)
 
+        # Edit and Delete buttons side by side
+        col_edit, col_delete = st.columns([2, 1])
+        with col_edit:
+            if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
+                st.session_state.editing_event_id = event["id"]
+                st.rerun()
+        with col_delete:
+            if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
+                st.session_state.confirm_delete_id = event["id"]
+                st.rerun()
+
+# Confirmation dialog for deletion
+if "confirm_delete_id" in st.session_state:
+    delete_event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.confirm_delete_id),
+                        None)
+    if delete_event:
+        for idx, event in enumerate(sorted_events, start=1):
+            if event["id"] == st.session_state.confirm_delete_id:
+                with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']} (Confirm Delete)", expanded=True):
+                    st.warning("⚠️ Are you sure you want to permanently delete this memory?")
+                    st.write(f"**{event['title']}** • {event['date']} • {event['location']['name']}")
+
+                    col_yes, col_no = st.columns(2)
+                    with col_yes:
+                        if st.button("Yes, delete permanently", type="primary", key=f"confirm_yes_{event['id']}"):
+                            for p in event["media"].get("photos", []) + event["media"].get("videos", []):
+                                if os.path.exists(p):
+                                    os.remove(p)
+                            st.session_state.data["events"] = [e for e in st.session_state.data["events"] if
+                                                               e["id"] != event["id"]]
+                            JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                                                 encoding="utf-8")
+                            st.session_state.force_map_refresh += 1
+                            if "confirm_delete_id" in st.session_state:
+                                del st.session_state.confirm_delete_id
+                            st.success("Memory deleted")
+                            st.rerun()
+                    with col_no:
+                        if st.button("No, keep it", key=f"confirm_no_{event['id']}"):
+                            if "confirm_delete_id" in st.session_state:
+                                del st.session_state.confirm_delete_id
+                            st.rerun()
+                break
+
 st.sidebar.markdown("---")
 if st.sidebar.button("💾 Download Backup"):
     with open(JSON_FILE, "rb") as f:
         st.sidebar.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-st.caption("New: Map automatically zooms to fit all markers on first load • User pan/zoom preserved afterward • Clean default view")
+st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
