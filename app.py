@@ -154,14 +154,21 @@ def build_popup_html(event):
     popup += "</div>"
     return popup
 
-# ==================== STATIC MAP WITH HORIZONTAL LABELS ====================
+# ==================== STATIC MAP WITH AUTO-FIT BOUNDS ====================
 def create_map(edit_mode=False):
-    center = st.session_state.map_center
-    zoom = st.session_state.map_zoom
-    m = folium.Map(location=center, zoom_start=zoom, tiles="OpenStreetMap")
+    events = st.session_state.data["events"]
+    if not events:
+        # Fallback to world view if no events
+        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
+        return m
+
+    # Collect coordinates
+    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in events]
+
+    m = folium.Map(tiles="OpenStreetMap")
     cluster = MarkerCluster().add_to(m)
 
-    sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+    sorted_events = sorted(events, key=lambda x: x["date"])
 
     for idx, e in enumerate(sorted_events, start=1):
         folium.Marker(
@@ -207,9 +214,12 @@ def create_map(edit_mode=False):
             )
         ).add_to(m)
 
+    # Fit map to bounds of all markers with padding
+    m.fit_bounds(coords, padding=(50, 50))
+
     return m
 
-# ==================== CSS FOR TIMELINE WITH HOVER ON LABEL FRAME ONLY ====================
+# ==================== CSS FOR TIMELINE WITH LABEL FRAME HOVER ====================
 st.markdown("""
 <style>
     .main > div { padding-top: 0rem !important; }
@@ -220,14 +230,14 @@ st.markdown("""
     .timeline-container {
         margin-bottom: 20px;
         padding: 15px;
-        background: linear-gradient(to bottom, #f0f4f8, #e0e8f0);
+        background: linear_gradient(to bottom, #f0f4f8, #e0e8f0);
         border-radius: 12px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.12);
     }
     .timeline-bar {
         position: relative;
         height: 8px;
-        background: linear-gradient(to right, #a0c4ff, #9ec5fe, #bdb2ff, #ffc6ff);
+        background: linear_gradient(to right, #a0c4ff, #9ec5fe, #bdb2ff, #ffc6ff);
         border-radius: 4px;
         margin: 40px 0 15px 0;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
@@ -309,7 +319,7 @@ with col_edit:
     if edit_mode:
         st.info("Click marker to edit • Drag to move")
 
-# ==================== TIMELINE BAR ON TOP WITH HOVER ON LABEL FRAME ====================
+# ==================== TIMELINE BAR ON TOP WITH LABEL FRAME HOVER ====================
 if data["events"]:
     sorted_events = sorted(data["events"], key=lambda x: x["date"])
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
@@ -340,13 +350,13 @@ if data["events"]:
         st.markdown(timeline_html, unsafe_allow_html=True)
 
         years_span = (max(dates) - min(dates)).days // 365
-        st.caption(f"Events span ~{years_span} years • Hover on label frame (larger area) for enlarged date • Reliable even with overlap")
+        st.caption(f"Events span ~{years_span} years • Hover on label frame for enlarged date • Reliable even with overlap")
 
         st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info("Add memories to see the extended timeline.")
 
-# ==================== MAP RENDERING ====================
+# ==================== MAP RENDERING WITH AUTO-FIT BOUNDS ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
 main_map = create_map(edit_mode=edit_mode)
 
@@ -358,12 +368,12 @@ map_data = st_folium(
     returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
 )
 
-# Preserve view
+# Preserve user-panned/zoomed view after first load
 if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
-# ==================== INTERACTIONS, EDIT, DELETE, SIDEBAR ====================
+# ==================== MAP INTERACTIONS, EDIT, DELETE, SIDEBAR ====================
 # [All remaining code unchanged – add/edit/delete/sidebar as before]
 
 if edit_mode and map_data and map_data.get("last_object_clicked"):
@@ -533,4 +543,4 @@ if st.sidebar.button("💾 Download Backup"):
     with open(JSON_FILE, "rb") as f:
         st.sidebar.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-st.caption("Fixed: Hover triggered by larger invisible frame around label • Works perfectly even when labels overlap • Tick decorative only • Smooth enlargement on hover")
+st.caption("New: Map automatically zooms to fit all markers on first load • User pan/zoom preserved afterward • Clean default view")
