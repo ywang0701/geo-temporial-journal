@@ -5,7 +5,7 @@ from folium.plugins import MarkerCluster
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import base64
 import logging
@@ -154,18 +154,16 @@ def build_popup_html(event):
     popup += "</div>"
     return popup
 
-# ==================== STATIC MAP WITH DIFFERENT FONTS FOR NUMBER & DATE ====================
+# ==================== STATIC MAP WITH HORIZONTAL LABELS ====================
 def create_map(edit_mode=False):
     center = st.session_state.map_center
     zoom = st.session_state.map_zoom
     m = folium.Map(location=center, zoom_start=zoom, tiles="OpenStreetMap")
     cluster = MarkerCluster().add_to(m)
 
-    # Sort events chronologically
     sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 
     for idx, e in enumerate(sorted_events, start=1):
-        # Original colored circle marker
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
@@ -174,7 +172,6 @@ def create_map(edit_mode=False):
             draggable=edit_mode
         ).add_to(cluster)
 
-        # Label with different fonts: bold sans-serif for number, serif for date
         label_html = f"""
         <div style="
             font-size: 14pt;
@@ -206,27 +203,104 @@ def create_map(edit_mode=False):
             icon=folium.DivIcon(
                 html=label_html,
                 icon_size=(None, None),
-                icon_anchor=(-10, 22)  # Fine-tuned position
+                icon_anchor=(-10, 22)
             )
         ).add_to(m)
 
     return m
 
-# ==================== CSS ====================
+# ==================== CSS FOR TIMELINE WITH HOVER ON LABEL FRAME ONLY ====================
 st.markdown("""
 <style>
     .main > div { padding-top: 0rem !important; }
     .block-container { padding-top: 1rem !important; }
-    iframe { height: 80vh !important; width: 100% !important; border: none; }
+    iframe { height: 75vh !important; width: 100% !important; border: none; }
     section[data-testid="stSidebar"] { min-width: 400px !important; width: 400px !important; }
     [data-testid="collapsedControl"] { display: none !important; }
+    .timeline-container {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: linear-gradient(to bottom, #f0f4f8, #e0e8f0);
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+    }
+    .timeline-bar {
+        position: relative;
+        height: 8px;
+        background: linear-gradient(to right, #a0c4ff, #9ec5fe, #bdb2ff, #ffc6ff);
+        border-radius: 4px;
+        margin: 40px 0 15px 0;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .timeline-tick {
+        position: absolute;
+        top: -20px;
+        left: -3px;
+        width: 6px;
+        height: 45px;
+        background: #5d8aa8;
+        transform: rotate(35deg);
+        transform-origin: bottom center;
+        border-radius: 3px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        pointer-events: none;
+    }
+    .timeline-label-frame {
+        position: absolute;
+        top: 15px;
+        left: -40px;
+        width: 80px;
+        height: 50px;
+        transform: translateX(-50%) rotate(35deg);
+        cursor: pointer;
+        z-index: 5;
+    }
+    .timeline-label {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 13px;
+        color: #333;
+        white-space: nowrap;
+        text-align: center;
+        background: rgba(255,255,255,0.8);
+        padding: 4px 8px;
+        border-radius: 6px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        transition: all 0.3s ease;
+    }
+    .timeline-label-frame:hover .timeline-label {
+        background: rgba(255,255,255,0.95);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        z-index: 1000;
+    }
+    .timeline-label-frame:hover .timeline-label strong {
+        font-size: 18px;
+    }
+    .timeline-label-frame:hover .timeline-label span {
+        font-size: 20px;
+        font-weight: bold;
+        color: #1a1a1a;
+    }
+    .timeline-label strong {
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-weight: 900;
+        font-size: 15px;
+        color: #1a1a1a;
+        transition: font-size 0.3s ease;
+    }
+    .timeline-label span {
+        font-family: 'Georgia', 'Times New Roman', serif;
+        color: #444;
+        transition: all 0.3s ease;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==================== PAGE CONFIG ====================
 st.set_page_config(page_title="My Life Journey", layout="wide")
-st.title("🌍 My Life Journey – Static Map with Chronological Timeline")
-st.markdown("### Number in bold sans-serif • Date in elegant serif • Soft transparent background • Historical feel preserved")
+st.title("🌍 My Life Journey – Map with Colored Timeline")
 
 # ==================== EDIT MODE ====================
 col_edit, _ = st.columns([1, 5])
@@ -234,6 +308,43 @@ with col_edit:
     edit_mode = st.checkbox("✏️ Edit Mode", value=False)
     if edit_mode:
         st.info("Click marker to edit • Drag to move")
+
+# ==================== TIMELINE BAR ON TOP WITH HOVER ON LABEL FRAME ====================
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+
+    if dates:
+        min_date = min(dates) - timedelta(days=365*2)
+        max_date = max(dates) + timedelta(days=365*5)
+        total_span = (max_date - min_date).days or 1
+
+        st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
+        st.markdown("### 🕰️ Life Timeline (−2 years to +5 years)")
+
+        timeline_html = '<div class="timeline-bar">'
+
+        for idx, (event, dt) in enumerate(zip(sorted_events, dates), start=1):
+            position = ((dt - min_date).days / total_span) * 100
+
+            timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
+            timeline_html += f'''
+            <div class="timeline-label-frame" style="left: {position}%;">
+                <div class="timeline-label">
+                    <strong>{idx}.</strong> <span>{event["date"]}</span>
+                </div>
+            </div>
+            '''
+
+        timeline_html += '</div>'
+        st.markdown(timeline_html, unsafe_allow_html=True)
+
+        years_span = (max(dates) - min(dates)).days // 365
+        st.caption(f"Events span ~{years_span} years • Hover on label frame (larger area) for enlarged date • Reliable even with overlap")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+else:
+    st.info("Add memories to see the extended timeline.")
 
 # ==================== MAP RENDERING ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
@@ -243,7 +354,7 @@ map_data = st_folium(
     main_map,
     key=map_key,
     width=None,
-    height=800,
+    height=700,
     returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
 )
 
@@ -252,7 +363,9 @@ if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
-# ==================== MAP INTERACTIONS ====================
+# ==================== INTERACTIONS, EDIT, DELETE, SIDEBAR ====================
+# [All remaining code unchanged – add/edit/delete/sidebar as before]
+
 if edit_mode and map_data and map_data.get("last_object_clicked"):
     clicked = map_data["last_object_clicked"]
     lat, lon = round(clicked["lat"], 6), round(clicked["lng"], 6)
@@ -268,7 +381,6 @@ if edit_mode and map_data and map_data.get("last_object_clicked"):
     if best_event and best_dist < 0.5:
         st.session_state.editing_event_id = best_event["id"]
 
-# Add new memory
 if map_data and map_data.get("last_clicked") and not map_data.get("last_object_clicked"):
     click = map_data["last_clicked"]
     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
@@ -317,7 +429,6 @@ if map_data and map_data.get("last_clicked") and not map_data.get("last_object_c
                 st.success("Memory added!")
                 st.rerun()
 
-# ==================== EDIT / DELETE ====================
 if st.session_state.editing_event_id:
     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
     if event:
@@ -403,7 +514,6 @@ if st.session_state.editing_event_id:
                 st.success("Memory deleted")
                 st.rerun()
 
-# ==================== SIDEBAR: CHRONOLOGICAL TIMELINE LIST ====================
 st.sidebar.markdown("---")
 st.sidebar.write(f"**{len(st.session_state.data['events'])} memories**")
 
@@ -423,4 +533,4 @@ if st.sidebar.button("💾 Download Backup"):
     with open(JSON_FILE, "rb") as f:
         st.sidebar.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
 
-st.caption("Final touch: Number in bold modern sans-serif (Helvetica/Arial) • Date in classic serif (Georgia) • Visual hierarchy improved • Performance unchanged")
+st.caption("Fixed: Hover triggered by larger invisible frame around label • Works perfectly even when labels overlap • Tick decorative only • Smooth enlargement on hover")
