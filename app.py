@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 import folium
 from folium.plugins import MarkerCluster
+from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ import base64
 import logging
 from pathlib import Path
 import html
+import argparse
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +28,21 @@ UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
 UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
 UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
-JSON_FILE = BASE_DIR / "life_events.json"
+# ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
+parser = argparse.ArgumentParser(description="My Life Journey App")
+parser.add_argument(
+    "--file",
+    type=str,
+    default="life_events.json",
+    help="Path to the life events JSON file (default: life_events.json)"
+)
+args = parser.parse_args()
+
+JSON_FILE = (BASE_DIR / args.file).resolve()
+
+st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`")
+
+# JSON_FILE = BASE_DIR / "life_events.json"
 
 
 # ==================== ROBUST DATA INITIALIZATION ====================
@@ -175,20 +191,222 @@ def build_popup_html(event):
     return popup
 
 
-# ==================== MAP CREATION ====================
+## ==================== MAP CREATION ====================
+#def create_map():
+#    events = st.session_state.data["events"]
+#    if not events:
+#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
+#        return m
+#
+#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in events]
+#
+#    m = folium.Map(tiles="OpenStreetMap")
+#    cluster = MarkerCluster().add_to(m)
+#
+#    sorted_events = sorted(events, key=lambda x: x["date"])
+#
+#    for idx, e in enumerate(sorted_events, start=1):
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            popup=folium.Popup(build_popup_html(e), max_width=450),
+#            tooltip=f"{idx}. {e['title']} ({e['date']})",
+#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
+#        ).add_to(cluster)
+#
+#        label_html = f"""
+#        <div style="
+#            font-size: 14pt;
+#            color: #333333;
+#            background: rgba(255, 255, 255, 0.75);
+#            padding: 6px 12px;
+#            border-radius: 8px;
+#            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+#            white-space: nowrap;
+#            border: 1px solid rgba(0,0,0,0.1);
+#            display: inline-block;
+#        ">
+#            <span style="font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 16pt; margin-right: 6px;">{idx}.</span>
+#            <span style="font-family: 'Georgia', 'Times New Roman', serif; font-weight: normal; font-size: 14pt;">{e['date']}</span>
+#        </div>
+#        """
+#
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            icon=folium.DivIcon(
+#                html=label_html,
+#                icon_size=(None, None),
+#                icon_anchor=(-10, 22)
+#            )
+#        ).add_to(m)
+#
+#    m.fit_bounds(coords, padding=(50, 50))
+#    return m
+
+# ==================== MAP CREATION WITH JOURNEY LINE ====================
+#def create_map():
+#    events = st.session_state.data["events"]
+#    if not events:
+#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
+#        return m
+#
+#    # Sort events chronologically
+#    sorted_events = sorted(events, key=lambda x: x["date"])
+#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
+#
+#    m = folium.Map(tiles="OpenStreetMap")
+#    cluster = MarkerCluster().add_to(m)
+#
+#    # Add markers with numbers and popups
+#    for idx, e in enumerate(sorted_events, start=1):
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            popup=folium.Popup(build_popup_html(e), max_width=450),
+#            tooltip=f"{idx}. {e['title']} ({e['date']})",
+#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
+#        ).add_to(cluster)
+#
+#        # Number label above marker
+#        label_html = f"""
+#        <div style="
+#            font-size: 14pt;
+#            color: #333333;
+#            background: rgba(255, 255, 255, 0.85);
+#            padding: 6px 12px;
+#            border-radius: 8px;
+#            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+#            white-space: nowrap;
+#            border: 1px solid rgba(0,0,0,0.1);
+#            font-weight: bold;
+#        ">
+#            {idx}
+#        </div>
+#        """
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            icon=folium.DivIcon(
+#                html=label_html,
+#                icon_size=(None, None),
+#                icon_anchor=(10, -10)  # Position number above the marker
+#            )
+#        ).add_to(m)
+#
+#    # === ADD THE JOURNEY LINE (CHRONOLOGICAL PATH) ===
+#    if len(coords) > 1:
+#        # Main journey line - soft blue with slight opacity
+#        folium.PolyLine(
+#            locations=coords,
+#            weight=5,
+#            color="#4A90E2",
+#            opacity=0.7,
+#            smooth_factor=2
+#        ).add_to(m)
+#
+#        # Animated dashed line on top for "flow" effect
+#        folium.PolyLine(
+#            locations=coords,
+#            weight=7,
+#            color="#50E3C2",
+#            opacity=0.8,
+#            dash_array="10, 15",
+#            smooth_factor=2,
+#            tooltip="Your life journey path"
+#        ).add_to(m)
+#
+#        # Optional: Add subtle arrowheads along the path
+#        # Folium doesn't have built-in arrows, but we can simulate with plugins
+#        # We'll use a simple repeating arrow style via CSS/JS if needed, but dashed gives good direction
+#
+#    # Fit map to show all points + journey
+#    m.fit_bounds(coords, padding=(80, 80))
+#
+#    return m
+
+# ==================== MAP CREATION WITH THINNER JOURNEY LINE ====================
+#def create_map():
+#    events = st.session_state.data["events"]
+#    if not events:
+#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
+#        return m
+#
+#    # Sort events chronologically
+#    sorted_events = sorted(events, key=lambda x: x["date"])
+#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
+#
+#    m = folium.Map(tiles="OpenStreetMap")
+#    cluster = MarkerCluster().add_to(m)
+#
+#    # Add markers with numbers and popups
+#    for idx, e in enumerate(sorted_events, start=1):
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            popup=folium.Popup(build_popup_html(e), max_width=450),
+#            tooltip=f"{idx}. {e['title']} ({e['date']})",
+#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
+#        ).add_to(cluster)
+#
+#        # Number label above marker
+#        label_html = f"""
+#        <div style="
+#            font-size: 14pt;
+#            color: #333333;
+#            background: rgba(255, 255, 255, 0.85);
+#            padding: 6px 12px;
+#            border-radius: 8px;
+#            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+#            white-space: nowrap;
+#            border: 1px solid rgba(0,0,0,0.1);
+#            font-weight: bold;
+#        ">
+#            {idx}
+#        </div>
+#        """
+#        folium.Marker(
+#            [e["location"]["latitude"], e["location"]["longitude"]],
+#            icon=folium.DivIcon(
+#                html=label_html,
+#                icon_size=(None, None),
+#                icon_anchor=(10, -10)
+#            )
+#        ).add_to(m)
+#
+#    # === THINNER JOURNEY LINE ===
+#    if len(coords) > 1:
+#        # Main solid line - thin and subtle
+#        folium.PolyLine(
+#            locations=coords,
+#            weight=2,          # Reduced from 5 → thinner
+#            color="#4A90E2",
+#            opacity=0.4,
+#            smooth_factor=2
+#        ).add_to(m)
+#
+#        # Animated flowing line on top - also thinner for elegance
+#        folium.PolyLine(
+#            locations=coords,
+#            weight=4,          # Reduced from 7 → thinner but still visible
+#            color="#50E3C2",
+#            opacity=0.7,
+#            dash_array="8, 12",  # Slightly adjusted dash for better flow
+#            smooth_factor=2,
+#            tooltip="Your life journey path →"
+#        ).add_to(m)
+#
+#    m.fit_bounds(coords, padding=(80, 80))
+#    return m
+# ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
 def create_map():
     events = st.session_state.data["events"]
     if not events:
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
         return m
 
-    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in events]
+    sorted_events = sorted(events, key=lambda x: x["date"])
+    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
 
     m = folium.Map(tiles="OpenStreetMap")
     cluster = MarkerCluster().add_to(m)
 
-    sorted_events = sorted(events, key=lambda x: x["date"])
-
+    # Add numbered markers
     for idx, e in enumerate(sorted_events, start=1):
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
@@ -197,33 +415,59 @@ def create_map():
             icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
         ).add_to(cluster)
 
+        # Number label above marker
         label_html = f"""
         <div style="
             font-size: 14pt;
             color: #333333;
-            background: rgba(255, 255, 255, 0.75);
+            background: rgba(255, 255, 255, 0.9);
             padding: 6px 12px;
             border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
             white-space: nowrap;
-            border: 1px solid rgba(0,0,0,0.1);
-            display: inline-block;
+            font-weight: bold;
+            border: 1px solid #ccc;
         ">
-            <span style="font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 16pt; margin-right: 6px;">{idx}.</span>
-            <span style="font-family: 'Georgia', 'Times New Roman', serif; font-weight: normal; font-size: 14pt;">{e['date']}</span>
+            {idx}
         </div>
         """
-
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             icon=folium.DivIcon(
                 html=label_html,
                 icon_size=(None, None),
-                icon_anchor=(-10, 22)
+                icon_anchor=(10, -10)
             )
         ).add_to(m)
 
-    m.fit_bounds(coords, padding=(50, 50))
+    # === CURVED + ANIMATED JOURNEY LINE USING ANTPath ===
+    if len(coords) > 1:
+        # Import and add AntPath plugin (curved, animated, pulsing flow)
+        from folium.plugins import AntPath
+
+        AntPath(
+            locations=coords,
+            color="#50E3C2",           # Teal/cyan flowing color
+            weight=2,                  # Thin but visible
+            opacity=0.8,
+            pulse_color="#ffffff",
+            delay=800,                 # Animation speed
+            dash_array=[10, 20],
+            smooth_factor=50,           # Higher = more curved/smoother
+            hardware_accelerated=True,
+            tooltip="Your life journey →"
+        ).add_to(m)
+
+        # Optional: Add a subtle static curved base line (great circle feel)
+        folium.PolyLine(
+            locations=coords,
+            weight=3,
+            color="#4A90E2",
+            opacity=0.4,
+            smooth_factor=50           # Very high for natural Earth curve
+        ).add_to(m)
+
+    m.fit_bounds(coords, padding=(80, 80))
     return m
 
 
