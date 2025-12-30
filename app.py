@@ -44,6 +44,20 @@ st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`")
 
 # JSON_FILE = BASE_DIR / "life_events.json"
 
+# ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
+# Get filename without extension and path
+json_filename = JSON_FILE.stem  # e.g., "life_events", "my_family_memories", "john_2025"
+
+# Clean up common patterns for nicer display
+display_name = json_filename.replace("_", " ").replace("-", " ")
+# Capitalize each word
+display_name = " ".join(word.capitalize() for word in display_name.split())
+
+# Fallback if somehow empty
+if not display_name.strip():
+    display_name = "My Journey"
+
+
 
 # ==================== ROBUST DATA INITIALIZATION ====================
 def ensure_valid_json():
@@ -94,6 +108,18 @@ if "data" not in st.session_state:
 
 data = st.session_state.data
 
+# Calculate timeline year range (only if there are events)
+timeline_info = ""
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+    if dates:
+        start_year = min(dates).year
+        end_year = max(dates).year
+        timeline_info = f" ({start_year} – {end_year})"
+
+# Final dynamic title
+full_title = f"🌍 {display_name} - Map{timeline_info}"
 # ==================== SESSION STATE INITIALIZATION ====================
 if "editing_event_id" not in st.session_state:
     st.session_state.editing_event_id = None
@@ -475,8 +501,7 @@ def create_map():
 st.markdown("""
 <style>
     .main > div { padding-top: 0rem !important; }
-    .block-container { padding-top: 0.5rem !important; padding-bottom: 1rem !important; }
-
+    .block-container { padding-top: 3rem !important; padding-bottom: 1rem !important; }
     iframe {
         height: 95vh !important;
         width: 100% !important;
@@ -491,10 +516,10 @@ st.markdown("""
 
     .timeline-container {
         margin-bottom: 20px;
-        padding: 15px;
+        padding: 5px;
         background: linear-gradient(to bottom, #f0f4f8, #e0e8f0);
         border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }
     .timeline-bar {
         position: relative;
@@ -564,14 +589,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== PAGE CONFIG ====================
 st.set_page_config(
-    page_title="My Life Journey",
+    page_title=f"{display_name} - Map {timeline_info}",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("🌍 My Life Journey – Map with Colored Timeline")
+#st.title("🌍 My Life Journey – Map with Colored Timeline")
+
+st.title(full_title)
 
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
@@ -585,7 +611,7 @@ if data["events"]:
 
         st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
         #st.markdown("### 🕰️ Life Timeline (−2 years to +5 years)")
-        st.markdown("### 🕰️ Life Timeline ({} to {})".format(min_date.year, max_date.year))
+        # st.markdown("### 🕰️ Life Timeline ({} to {})".format(min_date.year, max_date.year))
 
         timeline_html = '<div class="timeline-bar">'
 
