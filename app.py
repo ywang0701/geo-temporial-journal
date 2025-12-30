@@ -340,7 +340,8 @@ if data["events"]:
         total_span = (max_date - min_date).days or 1
 
         st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
-        st.markdown("### 🕰️ Life Timeline (−2 years to +5 years)")
+        #st.markdown("### 🕰️ Life Timeline (−2 years to +5 years)")
+        st.markdown("### 🕰️ Life Timeline ({} to {})".format(min_date.year, max_date.year))
 
         timeline_html = '<div class="timeline-bar">'
 
@@ -378,7 +379,8 @@ map_data = st_folium(
     width=None,
     height=1200,
     use_container_width=True,
-    returned_objects=["last_clicked", "center", "zoom"]
+    returned_objects=["last_clicked"]
+    #returned_objects = ["last_clicked", "center", "zoom"]
 )
 
 if map_data and map_data.get("center"):
