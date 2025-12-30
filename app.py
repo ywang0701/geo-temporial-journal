@@ -217,208 +217,6 @@ def build_popup_html(event):
     return popup
 
 
-## ==================== MAP CREATION ====================
-#def create_map():
-#    events = st.session_state.data["events"]
-#    if not events:
-#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
-#        return m
-#
-#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in events]
-#
-#    m = folium.Map(tiles="OpenStreetMap")
-#    cluster = MarkerCluster().add_to(m)
-#
-#    sorted_events = sorted(events, key=lambda x: x["date"])
-#
-#    for idx, e in enumerate(sorted_events, start=1):
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            popup=folium.Popup(build_popup_html(e), max_width=450),
-#            tooltip=f"{idx}. {e['title']} ({e['date']})",
-#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
-#        ).add_to(cluster)
-#
-#        label_html = f"""
-#        <div style="
-#            font-size: 14pt;
-#            color: #333333;
-#            background: rgba(255, 255, 255, 0.75);
-#            padding: 6px 12px;
-#            border-radius: 8px;
-#            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-#            white-space: nowrap;
-#            border: 1px solid rgba(0,0,0,0.1);
-#            display: inline-block;
-#        ">
-#            <span style="font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 16pt; margin-right: 6px;">{idx}.</span>
-#            <span style="font-family: 'Georgia', 'Times New Roman', serif; font-weight: normal; font-size: 14pt;">{e['date']}</span>
-#        </div>
-#        """
-#
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            icon=folium.DivIcon(
-#                html=label_html,
-#                icon_size=(None, None),
-#                icon_anchor=(-10, 22)
-#            )
-#        ).add_to(m)
-#
-#    m.fit_bounds(coords, padding=(50, 50))
-#    return m
-
-# ==================== MAP CREATION WITH JOURNEY LINE ====================
-#def create_map():
-#    events = st.session_state.data["events"]
-#    if not events:
-#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
-#        return m
-#
-#    # Sort events chronologically
-#    sorted_events = sorted(events, key=lambda x: x["date"])
-#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
-#
-#    m = folium.Map(tiles="OpenStreetMap")
-#    cluster = MarkerCluster().add_to(m)
-#
-#    # Add markers with numbers and popups
-#    for idx, e in enumerate(sorted_events, start=1):
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            popup=folium.Popup(build_popup_html(e), max_width=450),
-#            tooltip=f"{idx}. {e['title']} ({e['date']})",
-#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
-#        ).add_to(cluster)
-#
-#        # Number label above marker
-#        label_html = f"""
-#        <div style="
-#            font-size: 14pt;
-#            color: #333333;
-#            background: rgba(255, 255, 255, 0.85);
-#            padding: 6px 12px;
-#            border-radius: 8px;
-#            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-#            white-space: nowrap;
-#            border: 1px solid rgba(0,0,0,0.1);
-#            font-weight: bold;
-#        ">
-#            {idx}
-#        </div>
-#        """
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            icon=folium.DivIcon(
-#                html=label_html,
-#                icon_size=(None, None),
-#                icon_anchor=(10, -10)  # Position number above the marker
-#            )
-#        ).add_to(m)
-#
-#    # === ADD THE JOURNEY LINE (CHRONOLOGICAL PATH) ===
-#    if len(coords) > 1:
-#        # Main journey line - soft blue with slight opacity
-#        folium.PolyLine(
-#            locations=coords,
-#            weight=5,
-#            color="#4A90E2",
-#            opacity=0.7,
-#            smooth_factor=2
-#        ).add_to(m)
-#
-#        # Animated dashed line on top for "flow" effect
-#        folium.PolyLine(
-#            locations=coords,
-#            weight=7,
-#            color="#50E3C2",
-#            opacity=0.8,
-#            dash_array="10, 15",
-#            smooth_factor=2,
-#            tooltip="Your life journey path"
-#        ).add_to(m)
-#
-#        # Optional: Add subtle arrowheads along the path
-#        # Folium doesn't have built-in arrows, but we can simulate with plugins
-#        # We'll use a simple repeating arrow style via CSS/JS if needed, but dashed gives good direction
-#
-#    # Fit map to show all points + journey
-#    m.fit_bounds(coords, padding=(80, 80))
-#
-#    return m
-
-# ==================== MAP CREATION WITH THINNER JOURNEY LINE ====================
-#def create_map():
-#    events = st.session_state.data["events"]
-#    if not events:
-#        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
-#        return m
-#
-#    # Sort events chronologically
-#    sorted_events = sorted(events, key=lambda x: x["date"])
-#    coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
-#
-#    m = folium.Map(tiles="OpenStreetMap")
-#    cluster = MarkerCluster().add_to(m)
-#
-#    # Add markers with numbers and popups
-#    for idx, e in enumerate(sorted_events, start=1):
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            popup=folium.Popup(build_popup_html(e), max_width=450),
-#            tooltip=f"{idx}. {e['title']} ({e['date']})",
-#            icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
-#        ).add_to(cluster)
-#
-#        # Number label above marker
-#        label_html = f"""
-#        <div style="
-#            font-size: 14pt;
-#            color: #333333;
-#            background: rgba(255, 255, 255, 0.85);
-#            padding: 6px 12px;
-#            border-radius: 8px;
-#            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-#            white-space: nowrap;
-#            border: 1px solid rgba(0,0,0,0.1);
-#            font-weight: bold;
-#        ">
-#            {idx}
-#        </div>
-#        """
-#        folium.Marker(
-#            [e["location"]["latitude"], e["location"]["longitude"]],
-#            icon=folium.DivIcon(
-#                html=label_html,
-#                icon_size=(None, None),
-#                icon_anchor=(10, -10)
-#            )
-#        ).add_to(m)
-#
-#    # === THINNER JOURNEY LINE ===
-#    if len(coords) > 1:
-#        # Main solid line - thin and subtle
-#        folium.PolyLine(
-#            locations=coords,
-#            weight=2,          # Reduced from 5 → thinner
-#            color="#4A90E2",
-#            opacity=0.4,
-#            smooth_factor=2
-#        ).add_to(m)
-#
-#        # Animated flowing line on top - also thinner for elegance
-#        folium.PolyLine(
-#            locations=coords,
-#            weight=4,          # Reduced from 7 → thinner but still visible
-#            color="#50E3C2",
-#            opacity=0.7,
-#            dash_array="8, 12",  # Slightly adjusted dash for better flow
-#            smooth_factor=2,
-#            tooltip="Your life journey path →"
-#        ).add_to(m)
-#
-#    m.fit_bounds(coords, padding=(80, 80))
-#    return m
 # ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
 def create_map():
     events = st.session_state.data["events"]
@@ -610,8 +408,6 @@ if data["events"]:
         total_span = (max_date - min_date).days or 1
 
         st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
-        #st.markdown("### 🕰️ Life Timeline (−2 years to +5 years)")
-        # st.markdown("### 🕰️ Life Timeline ({} to {})".format(min_date.year, max_date.year))
 
         timeline_html = '<div class="timeline-bar">'
 
@@ -652,13 +448,23 @@ map_data = st_folium(
     returned_objects=["last_clicked"]
     #returned_objects = ["last_clicked", "center", "zoom"]
 )
+# Now check click + mode
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "View Mode"  # Default
+
+if st.session_state.app_mode and map_data and map_data.get("last_clicked"):
+    pass
+    # for display status purpose (not clean code)
+else:
+    if map_data and map_data.get("last_clicked") and not is_edit_mode:
+        st.sidebar.info("🔒 In **View Mode** — map clicks are disabled. Switch to **Edit Mode** to add memories.")
 
 if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
 # ==================== ADD NEW MEMORY ====================
-if map_data and map_data.get("last_clicked"):
+if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
     click = map_data["last_clicked"]
     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
     default_name = f"{lat:.5f}, {lon:.5f}"
@@ -850,8 +656,40 @@ if "confirm_delete_id" in st.session_state:
                 break
 
 st.sidebar.markdown("---")
-if st.sidebar.button("💾 Download Backup"):
-    with open(JSON_FILE, "rb") as f:
-        st.sidebar.download_button("⬇️ Backup JSON", f, "my_life_backup.json", "application/json")
+# Initialize mode in session state if not exists
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "View Mode"  # Default
+
+col_mode, col_download = st.sidebar.columns([1, 1])
+
+with col_mode:
+    mode = st.radio(
+        "Mode:",
+        options=["View Mode", "Edit Mode"],
+        index=0 if st.session_state.app_mode == "View Mode" else 1,
+        horizontal=False,
+        label_visibility="collapsed",
+        key="mode_radio"  # Important: give it a key so Streamlit tracks it
+    )
+
+    # Update session state when user changes mode
+    if mode != st.session_state.app_mode:
+        st.session_state.app_mode = mode
+        st.rerun()  # TODO Optional: force immediate refresh for snappy feel
+
+with col_download:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 Backup Memories"):
+        with open(JSON_FILE, "rb") as f:
+            st.download_button(
+                "⬇️ Backup JSON",
+                f,
+                file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json"
+            )
+
+# Use the persisted mode
+is_edit_mode = (st.session_state.app_mode == "Edit Mode")
+#st.sidebar.caption(f"Current mode: **{st.session_state.app_mode}**")
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
