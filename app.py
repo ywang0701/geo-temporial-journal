@@ -162,7 +162,8 @@ if data["events"]:
         timeline_info = f" ({start_year} – {end_year})"
 
 # Final dynamic title
-full_title = f"🌍 {display_name} - Map{timeline_info}"
+#full_title = f"🌍 {display_name} - Map{timeline_info}"
+full_title = f"🌍 Life Events - Map {timeline_info}  - test version"
 # ==================== SESSION STATE INITIALIZATION ====================
 if "editing_event_id" not in st.session_state:
     st.session_state.editing_event_id = None
