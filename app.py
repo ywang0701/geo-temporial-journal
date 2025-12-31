@@ -337,31 +337,90 @@ def create_map():
     m.fit_bounds(coords, padding=(80, 80))
     return m
 
+# ==================== RESPONSIVE CSS BASED ON DETECTED DEVICE ====================
+device = st.session_state.device_type
 
- # ==================== CSS ====================
-st.markdown("""
+css = """
 <style>
+    /* Common styles for all devices */
     .main > div { padding-top: 0rem !important; }
-    .block-container { padding-top: 3rem !important; padding-bottom: 1rem !important; }
+    .block-container { 
+        padding-top: 2rem !important; 
+        padding-left: 1rem !important; 
+        padding-right: 1rem !important; 
+    }
+
+    /* Map iframe - base */
     iframe {
-        height: 95vh !important;
         width: 100% !important;
         border: none;
-        min-height: 600px;
+        min-height: 500px !important;
     }
 
-    section[data-testid="stSidebar"] {
-        min-width: 400px !important;
-        width: 400px !important;
+    /* Larger touch targets */
+    .stButton > button {
+        height: 3em !important;
+        font-size: 16px !important;
+    }
+    .stTextInput > div > div > input,
+    .stDateInput > div > div,
+    .stTextArea > div > div > textarea {
+        font-size: 16px !important;
     }
 
+    /* Timeline base */
     .timeline-container {
-        margin-bottom: 20px;
-        padding: 5px;
+        margin: 10px 0;
+        padding: 10px;
         background: linear-gradient(to bottom, #f0f4f8, #e0e8f0);
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }
+"""
+
+# ==================== DEVICE-SPECIFIC STYLES ====================
+if device == "mobile":
+    css += """
+    iframe {
+        height: 65vh !important;
+        min-height: 450px !important;
+    }
+    h1, h2, h3 { font-size: 1.6rem !important; }
+    .timeline-bar { height: 6px; margin: 30px 0 10px 0; }
+    .timeline-label { font-size: 11px !important; }
+    .timeline-label strong { font-size: 13px !important; }
+    section[data-testid="stSidebar"] {
+        width: 100% !important;
+        min-width: 100% !important;
+    }
+    """
+
+elif device == "tablet":
+    css += """
+    iframe {
+        height: 75vh !important;
+        min-height: 550px !important;
+    }
+    h1, h2, h3 { font-size: 1.8rem !important; }
+    section[data-testid="stSidebar"] {
+        width: 350px !important;
+    }
+    """
+
+else:  # desktop
+    css += """
+    iframe {
+        height: 85vh !important;
+        min-height: 600px !important;
+    }
+    section[data-testid="stSidebar"] {
+        min-width: 380px !important;
+        width: 380px !important;
+    }
+    """
+
+# ==================== SHARED TIMELINE STYLING (kept from original) ====================
+css += """
     .timeline-bar {
         position: relative;
         height: 8px;
@@ -381,7 +440,6 @@ st.markdown("""
         transform-origin: bottom center;
         border-radius: 3px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        pointer-events: none;
     }
     .timeline-label-frame {
         position: absolute;
@@ -416,8 +474,16 @@ st.markdown("""
     .timeline-label-frame:hover .timeline-label strong { font-size: 18px; }
     .timeline-label-frame:hover .timeline-label span { font-size: 20px; font-weight: bold; color: #1a1a1a; }
     .timeline-label-frame:hover .timeline-title { display: block; }
-    .timeline-label strong { font-family: 'Helvetica', 'Arial', sans-serif; font-weight: 900; font-size: 15px; color: #1a1a1a; }
-    .timeline-label span { font-family: 'Georgia', 'Times New Roman', serif; color: #444; }
+    .timeline-label strong { 
+        font-family: 'Helvetica', 'Arial', sans-serif; 
+        font-weight: 900; 
+        font-size: 15px; 
+        color: #1a1a1a; 
+    }
+    .timeline-label span { 
+        font-family: 'Georgia', 'Times New Roman', serif; 
+        color: #444; 
+    }
     .timeline-title {
         display: none;
         font-size: 14px;
@@ -428,8 +494,9 @@ st.markdown("""
         max-width: 200px;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
 
+st.markdown(css, unsafe_allow_html=True)
 st.set_page_config(
     page_title=f"{display_name} - Map {timeline_info}",
     layout="wide",
