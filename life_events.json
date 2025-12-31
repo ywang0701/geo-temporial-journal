@@ -1,0 +1,103 @@
+{
+    "autobiography": {
+        "title": "My Life Journey",
+        "author": "Your Name",
+        "created_date": "2025-12-30",
+        "last_updated": "2025-12-30"
+    },
+    "events": [
+        {
+            "id": 7,
+            "title": "St Helens",
+            "date": "2025-12-01",
+            "location": {
+                "name": "45.86037, -122.80258",
+                "latitude": 45.860369,
+                "longitude": -122.802578
+            },
+            "description": "",
+            "media": {
+                "photos": [],
+                "videos": []
+            }
+        },
+        {
+            "id": 6,
+            "title": "vernonia",
+            "date": "2025-12-02",
+            "location": {
+                "name": "45.83263, -123.17596",
+                "latitude": 45.832627,
+                "longitude": -123.175964
+            },
+            "description": "",
+            "media": {
+                "photos": [
+                ],
+                "videos": []
+            }
+        },
+        {
+            "id": 1,
+            "title": "Hillsboro",
+            "date": "2025-12-30",
+            "location": {
+                "name": "45.49095, -122.99744",
+                "latitude": 45.490946,
+                "longitude": -122.997437
+            },
+            "description": "",
+            "media": {
+                "photos": [
+                ],
+                "videos": []
+            }
+        },
+        {
+            "id": 2,
+            "title": "Portland",
+            "date": "2025-12-30",
+            "location": {
+                "name": "45.51741, -122.67780",
+                "latitude": 45.517414,
+                "longitude": -122.677803
+            },
+            "description": "",
+            "media": {
+                "photos": [
+                ],
+                "videos": []
+            }
+        },
+        {
+            "id": 3,
+            "title": "Tigard",
+            "date": "2025-12-30",
+            "location": {
+                "name": "45.42448, -122.77084",
+                "latitude": 45.42448,
+                "longitude": -122.770844
+            },
+            "description": "",
+            "media": {
+                "photos": [],
+                "videos": []
+            }
+        },
+        {
+            "id": 5,
+            "title": "Vancouver",
+            "date": "2025-12-31",
+            "location": {
+                "name": "45.62700, -122.67471",
+                "latitude": 45.627004,
+                "longitude": -122.674713
+            },
+            "description": "",
+            "media": {
+                "photos": [],
+                "videos": []
+            }
+        }
+    ]
+}
