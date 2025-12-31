@@ -759,4 +759,5 @@ with st.sidebar.expander("📤 Upload Memories", expanded=False):
 is_edit_mode = (st.session_state.app_mode == "Edit Mode")
 st.sidebar.caption(f"Current mode: **{st.session_state.app_mode}**")
 
+
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
