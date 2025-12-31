@@ -2,4 +2,3 @@ streamlit
 folium
 streamlit-folium
 geopy
-urllib
