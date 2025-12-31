@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_folium import st_folium
+import streamlit.components.v1 as components
 import folium
 from folium.plugins import MarkerCluster
 from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
@@ -27,6 +28,48 @@ UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
 UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
 UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
 UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+
+import streamlit as st
+import streamlit.components.v1 as components  # ← Correct import for current Streamlit
+
+# ==================== DEVICE DETECTION ====================
+if "device_type" not in st.session_state:
+    detect_js = """
+    <script>
+        function detectDevice() {
+            const width = window.innerWidth;
+            const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            const ua = navigator.userAgent.toLowerCase();
+            const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+
+            if (width <= 768 && (hasTouch || isMobileUA)) {
+                return "mobile";
+            } else if (width <= 1024) {
+                return "tablet";
+            } else {
+                return "desktop";
+            }
+        }
+
+        const device = detectDevice();
+
+        if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: device
+            }, '*');
+        }
+    </script>
+    """
+
+    returned_value = components.html(detect_js, height=0, width=0)
+    st.session_state.device_type = returned_value or "desktop"
+
+# For testing only (remove later)
+# st.caption(f"Detected: **{st.session_state.device_type.upper()}**")
+
+# Then set the initial sidebar based on device
+initial_sidebar = "collapsed" if st.session_state.device_type == "mobile" else "expanded"
 
 # ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
 parser = argparse.ArgumentParser(description="My Life Journey App")
@@ -295,7 +338,7 @@ def create_map():
     return m
 
 
-# ==================== CSS ====================
+ # ==================== CSS ====================
 st.markdown("""
 <style>
     .main > div { padding-top: 0rem !important; }
@@ -307,9 +350,9 @@ st.markdown("""
         min-height: 600px;
     }
 
-    section[data-testid="stSidebar"] { 
-        min-width: 400px !important; 
-        width: 400px !important; 
+    section[data-testid="stSidebar"] {
+        min-width: 400px !important;
+        width: 400px !important;
     }
 
     .timeline-container {
@@ -390,7 +433,7 @@ st.markdown("""
 st.set_page_config(
     page_title=f"{display_name} - Map {timeline_info}",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state=initial_sidebar   # ← Use the variable here
 )
 
 #st.title("🌍 My Life Journey – Map with Colored Timeline")
