@@ -731,9 +731,9 @@ with col_download:
                 mime="application/json"
             )
 
-# ==================== UPLOAD & RESTORE JSON (FULLY INTEGRATED) ====================
+# ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
 st.sidebar.markdown("---")
-with st.sidebar.expander("📤 Upload Memories", expanded=False):
+with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
 
     uploaded_file = st.file_uploader(
@@ -765,29 +765,28 @@ with st.sidebar.expander("📤 Upload Memories", expanded=False):
                         # 1. Overwrite the current JSON file
                         JSON_FILE.write_bytes(uploaded_bytes)
 
-                        # 2. CRITICAL: Update the current journey path in session state
+                        # 2. Update current journey path
                         st.session_state.current_json_path = JSON_FILE
 
-                        # 3. Clear cache and reload fresh data
-                        load_data_from_file.clear()  # Clear @st.cache_data
-                        st.session_state.data = load_data(JSON_FILE)
+                        # 3. Clear cache and reload data properly
+                        load_data_from_file.clear()  # This clears the @st.cache_data
+                        st.session_state.data = load_data_from_file(JSON_FILE)
 
-                        # 4. Force map and UI refresh
+                        # 4. Force full refresh
                         st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
                         if "map_refresh_key" in st.session_state:
                             st.session_state.map_refresh_key += 1
 
-                        # 5. Reset map view to fit new data naturally
-                        if "map_center" in st.session_state:
-                            del st.session_state.map_center
-                        if "map_zoom" in st.session_state:
-                            del st.session_state.map_zoom
+                        # 5. Reset map view
+                        for key in ["map_center", "map_zoom"]:
+                            if key in st.session_state:
+                                del st.session_state[key]
 
-                        # 6. Optional: Clear any editing state
+                        # 6. Clear editing state
                         if "editing_event_id" in st.session_state:
                             del st.session_state.editing_event_id
 
-                        st.success(f"✅ Journey restored!\n\nNow viewing: **{title}**")
+                        st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
                         st.rerun()
 
                 with col2:
@@ -798,9 +797,5 @@ with st.sidebar.expander("📤 Upload Memories", expanded=False):
             st.error("Invalid JSON file — could not parse.")
         except Exception as e:
             st.error(f"Error: {e}")
-# Use the persisted mode
-is_edit_mode = (st.session_state.app_mode == "Edit Mode")
-st.sidebar.caption(f"Current mode: **{st.session_state.app_mode}**")
-
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
