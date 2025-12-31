@@ -688,8 +688,75 @@ with col_download:
                 mime="application/json"
             )
 
+# ==================== UPLOAD & RESTORE JSON (FULLY INTEGRATED) ====================
+st.sidebar.markdown("---")
+with st.sidebar.expander("📤 Upload Memories", expanded=False):
+    st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
+
+    uploaded_file = st.file_uploader(
+        "Select a backup JSON file to restore",
+        type=["json"],
+        key="json_restore_uploader"
+    )
+
+    if uploaded_file is not None:
+        try:
+            # Read and validate uploaded JSON
+            uploaded_bytes = uploaded_file.read()
+            uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
+
+            if not all(key in uploaded_data for key in ["autobiography", "events"]):
+                st.error("Invalid backup: missing 'autobiography' or 'events' section.")
+            elif not isinstance(uploaded_data["events"], list):
+                st.error("Invalid backup: 'events' must be a list.")
+            else:
+                title = uploaded_data["autobiography"].get("title", "Untitled Journey")
+                event_count = len(uploaded_data["events"])
+                st.success(f"Valid backup: **{title}** ({event_count} memories)")
+
+                st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{JSON_FILE.name}**")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
+                        # 1. Overwrite the current JSON file
+                        JSON_FILE.write_bytes(uploaded_bytes)
+
+                        # 2. CRITICAL: Update the current journey path in session state
+                        st.session_state.current_json_path = JSON_FILE
+
+                        # 3. Clear cache and reload fresh data
+                        load_data_from_file.clear()  # Clear @st.cache_data
+                        st.session_state.data = load_data(JSON_FILE)
+
+                        # 4. Force map and UI refresh
+                        st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
+                        if "map_refresh_key" in st.session_state:
+                            st.session_state.map_refresh_key += 1
+
+                        # 5. Reset map view to fit new data naturally
+                        if "map_center" in st.session_state:
+                            del st.session_state.map_center
+                        if "map_zoom" in st.session_state:
+                            del st.session_state.map_zoom
+
+                        # 6. Optional: Clear any editing state
+                        if "editing_event_id" in st.session_state:
+                            del st.session_state.editing_event_id
+
+                        st.success(f"✅ Journey restored!\n\nNow viewing: **{title}**")
+                        st.rerun()
+
+                with col2:
+                    if st.button("❌ Cancel", type="secondary", use_container_width=True):
+                        st.info("Restore cancelled.")
+
+        except json.JSONDecodeError:
+            st.error("Invalid JSON file — could not parse.")
+        except Exception as e:
+            st.error(f"Error: {e}")
 # Use the persisted mode
 is_edit_mode = (st.session_state.app_mode == "Edit Mode")
-#st.sidebar.caption(f"Current mode: **{st.session_state.app_mode}**")
+st.sidebar.caption(f"Current mode: **{st.session_state.app_mode}**")
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
