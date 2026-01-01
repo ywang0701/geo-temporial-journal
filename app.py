@@ -861,6 +861,43 @@ with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
                     if st.button("❌ Cancel", type="secondary", use_container_width=True):
                         st.info("Restore cancelled.")
 
+            # ==================== TEMPORARY REFRESH BANNER AFTER RESTORE ====================
+            if st.session_state.get("refresh_banner", False):
+                start_time = st.session_state.get("banner_start_time", time.time())
+                elapsed = time.time() - start_time
+
+                if elapsed < 5:  # Show for 5 seconds
+                    st.markdown(
+                        """
+                        <div style="
+                            position: fixed;
+                            top: 100px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: #ff4b4b;
+                            color: white;
+                            padding: 16px 32px;
+                            border-radius: 12px;
+                            font-size: 18px;
+                            font-weight: bold;
+                            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                            z-index: 10000;
+                            text-align: center;
+                        ">
+                            🔄 Please refresh the webpage to see the updated journey
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                    # Force rerun to update timer
+                    time.sleep(0.1)
+                    st.rerun()
+                else:
+                    # Time's up → remove banner
+                    st.session_state.refresh_banner = False
+                    if "banner_start_time" in st.session_state:
+                        del st.session_state.banner_start_time
+                    st.rerun()
         except json.JSONDecodeError:
             st.error("Invalid JSON file — could not parse.")
         except Exception as e:
