@@ -179,6 +179,9 @@ if data["events"]:
 # full_title = f"🌍 Life Events - Map {timeline_info}  - test version"
 # ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
 json_filename = JSON_FILE.name
+if st.session_state.selected_json_file:
+    json_filename = st.session_state.selected_json_file
+
 display_name = json_filename.replace(".json", "").replace("_", " ").replace("-", " ")
 display_name = " ".join(word.capitalize() for word in display_name.split())
 
@@ -580,7 +583,7 @@ if data["events"]:
         st.markdown(timeline_html, unsafe_allow_html=True)
 
         years_span = (max(dates) - min(dates)).days // 365
-        st.caption(f"Events span ~{years_span} years • Hover on label frame to show memory title")
+        #st.caption(f"Events span ~{years_span} years • Hover on label frame to show memory title")
 
         st.markdown("</div>", unsafe_allow_html=True)
 else:
@@ -825,86 +828,252 @@ if "selected_json_file" not in st.session_state:
 # Refresh the list of available JSON files
 local_json_files = get_local_json_files()
 
-st.sidebar.subheader("Your Journies")
+# ==================== JOURNEY SELECTION WITH MEMORY COUNT ====================
+st.sidebar.subheader("📍 My Journeys")
 
 if local_json_files:
-    for json_name in local_json_files:
-        # todo is_current = json_name == JSON_FILE.name
+    for json_name in sorted(local_json_files):  # Optional: sort alphabetically
+        file_path = BASE_DIR / json_name
         is_current = json_name == st.session_state.selected_json_file
-        is_selected = json_name == st.session_state.selected_json_file
-        #cols = st.sidebar.columns([4, 1])  # Main column for button, small one for indicator
-        cols = st.sidebar.columns([1])  # Main column for button, small one for indicator
 
-        with cols[0]:
-            button_label = f"**→ {json_name}**" if is_current else json_name
-            button_type = "primary" if is_current else "secondary"
-            button_help = "Displaying" if is_current else "Click to Display"
-            disabled = is_current
+        # Load and count events safely
+        try:
+            temp_data = json.loads(file_path.read_text(encoding="utf-8"))
+            event_count = len(temp_data.get("events", []))
+            title = temp_data.get("autobiography", {}).get("title", json_name.replace(".json", ""))
+            title = json_name # todo
+            count_text = f"{event_count} place{'s' if event_count != 1 else ''}"
+        except Exception:
+            event_count = 0
+            title = json_name.replace(".json", "")
+            count_text = "0 places"
 
-            if st.button(
-                button_label,
-                key=f"load_journey_{json_name}",
-                type=button_type,
-                disabled=disabled,
-                use_container_width=True,
-                help=button_help
-            ):
-                if not is_current:
-                    try:
-                        source_path = BASE_DIR / json_name
+        # Button label: bold arrow for current, nice formatting
+        if is_current:
+            button_label = f"**→ {title}** • {count_text}"
+            button_type = "primary"
+            help_text = "Currently viewing this journey"
+            disabled = True
+        else:
+            button_label = f"{title} • {count_text}"
+            button_type = "secondary"
+            help_text = f"Switch to this journey ({event_count} memories)"
+            disabled = False
 
-                        # Overwrite current JSON file
-                        content = source_path.read_text(encoding="utf-8")
-                        JSON_FILE.write_text(content, encoding="utf-8")
+        if st.sidebar.button(
+            label=button_label,
+            key=f"load_journey_{json_name}",
+            type=button_type,
+            disabled=disabled,
+            use_container_width=True,
+            help=help_text
+        ):
+            if not is_current:
+                try:
+                    content = file_path.read_text(encoding="utf-8")
+                    JSON_FILE.write_text(content, encoding="utf-8")
 
-                        # Update selected tracker
-                        st.session_state.selected_json_file = json_name
+                    st.session_state.selected_json_file = json_name
 
-                        # Clear all relevant caches and session state
-                        st.cache_data.clear()
-                        if "data" in st.session_state:
-                            del st.session_state["data"]
-                        if "editing_event_id" in st.session_state:
-                            del st.session_state["editing_event_id"]
+                    # Clear cache and reload data
+                    st.cache_data.clear()
+                    if "data" in st.session_state:
+                        del st.session_state["data"]
+                    if "editing_event_id" in st.session_state:
+                        del st.session_state["editing_event_id"]
 
+                    # Reset map and editing state
+                    keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
+                    for k in keys_to_reset:
+                        if k in st.session_state:
+                            del st.session_state[k]
 
-                        # Optional: clear map/edit state
-                        keys_to_reset = ["map_center", "map_zoom", "editing_event_id", "force_map_refresh"]
-                        for k in keys_to_reset:
-                            if k in st.session_state:
-                                del st.session_state[k]
+                    st.success(f"✅ Switched to: **{title}** ({event_count} memories)")
+                    st.rerun()
 
-                        st.success(f"✅ Loaded journey: **{json_name}**")
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f"Failed to load {json_name}: {e}")
-
-#        with cols[1]:
-#            if is_current:
-#                st.success("Active")
-#            else:
-#                st.write("")  # placeholder for alignment
-
-#    st.sidebar.caption(f"Total JSON files: {len(local_json_files)} • Current: `{JSON_FILE.name}`")
+                except Exception as e:
+                    st.error(f"Failed to load {json_name}: {e}")
 
 else:
-    pass
-    #st.sidebar.info("No .json files found in the app directory")
-    #st.sidebar.caption("Total JSON files: 0")
+    st.sidebar.info("No journey files found. Create one by adding memories!")
 
-# ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
 st.sidebar.markdown("**Journey Operations**")
-#st.sidebar.markdown("<br>", unsafe_allow_html=True)  # Optional spacing
-if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
-    with open(JSON_FILE, "rb") as f:
-        st.download_button(
-            label="⬇️ Download Backup JSON",
-            data=f,
-            file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-            mime="application/json",
-            use_container_width=True
+# st.sidebar.markdown("<br>", unsafe_allow_html=True)  # Optional spacing
+
+# ==================== CREATE NEW JOURNEY ====================
+#st.sidebar.markdown("---")
+with st.sidebar.expander("✨ Create New Journey", expanded=False):
+    st.write("Enter a name for your new journey. It will start empty.")
+
+    new_journey_name = st.text_input(
+        "Journey Name*",
+        placeholder="e.g., My 2026 Adventures",
+        help="Use letters, numbers, spaces, or hyphens. The file will be saved as a .json."
+    )
+
+    if new_journey_name:
+        # Clean the input to make a safe filename
+        clean_name = (
+            new_journey_name.strip()
+            .lower()
+            .replace(" ", "-")
+            .replace("_", "-")
+            .replace("/", "")
+            .replace("\\", "")
         )
+        if not clean_name:
+            st.error("Please enter a valid name.")
+        else:
+            new_filename = f"{clean_name}.json"
+            new_file_path = BASE_DIR / new_filename
+
+            if new_file_path.exists():
+                st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+            else:
+                col_create, col_cancel = st.columns(2)
+                with col_create:
+                    if st.button("✅ Create Journey", type="primary", use_container_width=True):
+                        try:
+                            # Default JSON structure
+                            default_data = {
+                                "autobiography": {
+                                    "title": new_journey_name,
+                                    "author": "Your Name",
+                                    "created_date": datetime.now().strftime("%Y-%m-%d"),
+                                    "last_updated": datetime.now().strftime("%Y-%m-%d")
+                                },
+                                "events": []
+                            }
+
+                            # Write the new JSON file
+                            new_file_path.write_text(
+                                json.dumps(default_data, indent=4, ensure_ascii=False),
+                                encoding="utf-8"
+                            )
+
+                            # Switch to the new journey
+                            st.session_state.selected_json_file = new_filename
+                            JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False),
+                                                 encoding="utf-8")
+
+                            # Clear cache and reset state
+                            st.cache_data.clear()
+                            if "data" in st.session_state:
+                                del st.session_state["data"]
+                            if "editing_event_id" in st.session_state:
+                                del st.session_state["editing_event_id"]
+                            keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
+                            for k in keys_to_reset:
+                                if k in st.session_state:
+                                    del st.session_state[k]
+
+                            st.success(f"✅ Created and switched to: **{new_journey_name}** (0 places)")
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"Failed to create journey: {e}")
+
+                with col_cancel:
+                    if st.button("❌ Cancel", type="secondary", use_container_width=True):
+                        st.rerun()
+
+
+
+
+    # ==================== RENAME JOURNEY ====================
+#st.sidebar.markdown("---")
+with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
+    st.write("Change the name of an existing journey. This renames the file and updates the title.")
+
+    # Exclude none to force selection
+    journey_to_rename = st.selectbox(
+        "Select journey to rename",
+        options=local_json_files,
+        index=local_json_files.index(
+            st.session_state.selected_json_file) if st.session_state.selected_json_file in local_json_files else 0,
+        help="Choose the journey you want to rename"
+    )
+
+    if journey_to_rename:
+        current_path = BASE_DIR / journey_to_rename
+        try:
+            current_data = json.loads(current_path.read_text(encoding="utf-8"))
+            current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
+            current_display = " ".join(word.capitalize() for word in current_display.split())
+            event_count = len(current_data.get("events", []))
+            st.info(f"**Current:** {current_display} • {event_count} place{'s' if event_count != 1 else ''}")
+        except:
+            st.error("Could not preview selected journey.")
+
+        new_journey_name = st.text_input(
+            "New Journey Name*",
+            value=current_display,  # Pre-fill with current formatted name
+            placeholder="e.g., Europe Adventure 2025",
+            help="This will be the new display name and filename"
+        )
+
+        if new_journey_name and new_journey_name != current_display:
+            # Clean for filename
+            clean_name = (
+                new_journey_name.strip()
+                .lower()
+                .replace(" ", "-")
+                .replace("_", "-")
+                .replace("/", "")
+                .replace("\\", "")
+            )
+            if not clean_name:
+                st.error("Invalid name – please enter a valid journey name.")
+            else:
+                new_filename = f"{clean_name}.json"
+                new_path = BASE_DIR / new_filename
+
+                if new_path.exists():
+                    st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+                else:
+                    col_rename, col_cancel = st.columns(2)
+                    with col_rename:
+                        if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
+                            try:
+                                # Update title in data
+                                current_data["autobiography"]["title"] = new_journey_name
+                                current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+
+                                # Write to new file
+                                new_path.write_text(
+                                    json.dumps(current_data, indent=4, ensure_ascii=False),
+                                    encoding="utf-8"
+                                )
+
+                                # If renaming the current active journey, update the active file too
+                                is_current = journey_to_rename == st.session_state.selected_json_file
+                                if is_current:
+                                    JSON_FILE.write_text(
+                                        json.dumps(current_data, indent=4, ensure_ascii=False),
+                                        encoding="utf-8"
+                                    )
+                                    st.session_state.selected_json_file = new_filename
+
+                                # Delete old file
+                                # current_path.unlink()
+
+                                # Clear cache and reset state
+                                st.cache_data.clear()
+                                if "data" in st.session_state:
+                                    del st.session_state["data"]
+                                keys_to_reset = ["map_center", "map_zoom", "force_map_refresh", "editing_event_id"]
+                                for k in keys_to_reset:
+                                    if k in st.session_state:
+                                        del st.session_state[k]
+
+                                st.success(f"✅ Journey renamed to **{new_journey_name}**!")
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"Failed to rename: {e}")
+
+                    with col_cancel:
+                        st.button("❌ Cancel", type="secondary", use_container_width=True)
 # ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
 #st.sidebar.markdown("---")
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
@@ -1065,6 +1234,19 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
 
+
+# ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
+if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
+    with open(JSON_FILE, "rb") as f:
+        st.download_button(
+            label="⬇️ Download Backup JSON",
+            data=f,
+            file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
@@ -1087,4 +1269,5 @@ with col_radio:
 if mode != st.session_state.app_mode:
     st.session_state.app_mode = mode
     st.rerun()
+
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
