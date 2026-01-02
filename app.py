@@ -35,7 +35,7 @@ else:
 
 BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 
-if os.getenv("K_SERVICE"):  # Running on Cloud Run
+if os.getenv("K_SERVICE1"):  # Running on Cloud Run
     storage_client = storage.Client()
     bucket = storage_client.bucket(BUCKET_NAME)
 
@@ -122,7 +122,7 @@ args = parser.parse_args()
 if "selected_json_file" not in st.session_state:
     st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
-JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if os.getenv("K_SERVICE") else str(BASE_DIR / st.session_state.selected_json_file)
+JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if os.getenv("K_SERVICE1") else str(BASE_DIR / st.session_state.selected_json_file)
 
 #JSON_FILE = (BASE_DIR / args.file).resolve()
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
@@ -203,7 +203,7 @@ ensure_valid_json()
 @st.cache_data(show_spinner=False)
 def load_data_from_file(blob_or_path):
     try:
-        if os.getenv("K_SERVICE"):
+        if os.getenv("K_SERVICE1"):
             data_bytes = download_from_gcs(blob_or_path)
             text = data_bytes.decode("utf-8")
         else:
@@ -229,7 +229,7 @@ def load_data_from_file(blob_or_path):
 
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
-    if os.getenv("K_SERVICE"):
+    if os.getenv("K_SERVICE1"):
         upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
     else:
         Path(JSON_FILE).write_text(json_text, encoding="utf-8")
@@ -242,7 +242,7 @@ data = st.session_state.data
 
 # List journeys
 def get_local_json_files():
-    if os.getenv("K_SERVICE"):
+    if os.getenv("K_SERVICE1"):
         blobs = list_journey_blobs()
         return [os.path.basename(b) for b in blobs]
     else:
@@ -768,7 +768,7 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                     # photo_paths.append(str(path))
                     file_bytes = up.getbuffer()
 
-                    if os.getenv("K_SERVICE"):
+                    if os.getenv("K_SERVICE1"):
                         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
                     else:
                         path = UPLOADS_PHOTOS / fname
@@ -782,7 +782,7 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                     # path.write_bytes(up.getbuffer())
                     # video_paths.append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE"):
+                    if os.getenv("K_SERVICE1"):
                         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
                     else:
                         path = UPLOADS_VIDEOS / fname
@@ -870,7 +870,7 @@ if st.session_state.editing_event_id:
                     # path.write_bytes(up.getbuffer())
                     # event["media"]["photos"].append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE"):
+                    if os.getenv("K_SERVICE1"):
                         event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
                     else:
                         path = UPLOADS_PHOTOS / fname
@@ -883,7 +883,7 @@ if st.session_state.editing_event_id:
                     # path.write_bytes(up.getbuffer())
                     # event["media"]["videos"].append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE"):
+                    if os.getenv("K_SERVICE1"):
                         event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
                     else:
                         path = UPLOADS_VIDEOS / fname
@@ -905,29 +905,11 @@ if st.session_state.editing_event_id:
             st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
-import requests
-
-def is_gcp_environment():
-    try:
-        response = requests.get(
-            "http://metadata.google.internal/computeMetadata/v1/instance/id",
-            headers={"Metadata-Flavor": "Google"},
-            timeout=1
-        )
-        return response.status_code == 200
-    except:
-        return False
-
-if is_gcp_environment():
-    st.sidebar.markdown("IsGCP? : Enabled" )
-else:
-    st.sidebar.markdown("IsGCP? : Disabled")
-
 st.sidebar.markdown("### 🛠️ Debug Mode Info")
-if os.getenv("K_SERVICE"):
-    st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE: {os.getenv('K_SERVICE')})")
+if os.getenv("K_SERVICE1"):
+    st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE1: {os.getenv('K_SERVICE1')})")
 else:
-    st.sidebar.warning("⚠️ **Local Mode** (K_SERVICE not set)")
+    st.sidebar.warning("⚠️ **Local Mode** (K_SERVICE1 not set)")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader(f"🗺️ Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
