@@ -850,12 +850,14 @@ if local_json_files:
 
         # Button label: bold arrow for current, nice formatting
         if is_current:
-            button_label = f"**→ {title}** • {count_text}"
+            button_label = f"**→ {title}** • {count_text}".ljust(45,"_")
+            #button_label = f"**→ {title}** • {count_text}"
             button_type = "primary"
             help_text = "Currently viewing this journey"
             disabled = True
         else:
-            button_label = f"{title} • {count_text}"
+            button_label = f"{title} • {count_text}".ljust(40,"_")
+            #button_label = f"{title} • {count_text}"
             button_type = "secondary"
             help_text = f"Switch to this journey ({event_count} memories)"
             disabled = False
