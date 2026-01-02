@@ -752,7 +752,7 @@ if st.session_state.editing_event_id:
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.markdown("---")
-st.sidebar.subheader(f" Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
+st.sidebar.subheader(f"🗺️ Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
@@ -1252,22 +1252,37 @@ if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=T
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
 
 with col_label:
-    st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
+    pass
+    # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
     # The padding-top aligns it vertically with the radio buttons
 
 with col_radio:
-    mode = st.radio(
-        label="Mode selection (hidden)",           # Hidden real label
-        options=["View Mode", "Edit Mode"],
+#    mode = st.radio(
+#        label="Mode selection (hidden)",           # Hidden real label
+#        options=["View Mode", "Edit Mode"],
+#        index=0 if st.session_state.app_mode == "View Mode" else 1,
+#        horizontal=True,
+#        label_visibility="collapsed",              # Hide the actual label
+#        key="mode_radio"
+#    )
+#    # Update session state when mode changes
+#    if mode != st.session_state.app_mode:
+#        st.session_state.app_mode = mode
+#        st.rerun()
+
+    mode = st.sidebar.radio(
+        label="App mode",                  # Hidden or visible as needed
+        options=["👁️ View Mode", "✏️ Edit Mode"],
         index=0 if st.session_state.app_mode == "View Mode" else 1,
         horizontal=True,
-        label_visibility="collapsed",              # Hide the actual label
+        label_visibility="collapsed",      # Hide the main label since we have markdown above
         key="mode_radio"
     )
+# Clean the returned value (remove emoji for clean comparison/storage)
+clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
 
-# Update session state when mode changes
-if mode != st.session_state.app_mode:
-    st.session_state.app_mode = mode
+if clean_mode != st.session_state.app_mode:
+    st.session_state.app_mode = clean_mode
     st.rerun()
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
