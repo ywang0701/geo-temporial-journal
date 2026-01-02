@@ -905,6 +905,12 @@ if st.session_state.editing_event_id:
             st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
+st.sidebar.markdown("### 🛠️ Debug Mode Info")
+if os.getenv("K_SERVICE"):
+    st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE: {os.getenv('K_SERVICE')})")
+else:
+    st.sidebar.warning("⚠️ **Local Mode** (K_SERVICE not set)")
+
 st.sidebar.markdown("---")
 st.sidebar.subheader(f"🗺️ Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 
