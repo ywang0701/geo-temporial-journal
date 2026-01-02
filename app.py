@@ -15,6 +15,9 @@ import logging
 from pathlib import Path
 import html
 import argparse
+# === NEW IMPORTS FOR GOOGLE CLOUD STORAGE ===
+import os
+from google.cloud import storage
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -25,11 +28,28 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = Path(__file__).resolve().parent
 
-UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
-UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
-UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
-UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+#UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
+#UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
+#UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
+#UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
+BUCKET_NAME = "journey-journal"  # Your GCS bucket name
+
+if os.getenv("K_SERVICE"):  # Running on Cloud Run
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(BUCKET_NAME)
+
+    def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
+        blob = bucket.blob(destination_blob_name)
+        blob.upload_from_string(file_bytes, content_type=content_type)
+        return f"gs://{BUCKET_NAME}/{destination_blob_name}"
+
+else:
+    # Local development fallback
+    UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
+    UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
+    UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
+    UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 DEFAULT_ACTIVE_JSON="life_events.json"
 
 import streamlit as st
@@ -223,19 +243,49 @@ if "force_map_refresh" not in st.session_state:
     st.session_state.force_map_refresh = 0
 
 
-# ==================== HELPERS ====================
-def get_image_base64(p):
-    path = Path(p)
-    if not path.exists():
-        return None
-    return base64.b64encode(path.read_bytes()).decode('utf-8')
+# # ==================== HELPERS ====================
+# def get_image_base64(p):
+#     path = Path(p)
+#     if not path.exists():
+#         return None
+#     return base64.b64encode(path.read_bytes()).decode('utf-8')
+#
+#
+# def get_video_base64(p):
+#     path = Path(p)
+#     if not path.exists() or path.stat().st_size > 15 * 1024 * 1024:
+#         return None
+#     return base64.b64encode(path.read_bytes()).decode('utf-8')
 
+def get_media_bytes(media_path):
+    """Fetch bytes from GCS (gs://...) or local path"""
+    if media_path.startswith("gs://"):
+        parts = media_path[5:].split("/", 1)
+        bucket_name = parts[0]
+        blob_path = parts[1] if len(parts) > 1 else ""
+        blob = storage.Client().bucket(bucket_name).blob(blob_path)
+        return blob.download_as_bytes()
+    else:
+        path = Path(media_path)
+        if not path.exists():
+            return None
+        return path.read_bytes()
+
+def get_image_base64(p):
+    try:
+        data = get_media_bytes(p)
+        return base64.b64encode(data).decode('utf-8') if data else None
+    except Exception:
+        return None
 
 def get_video_base64(p):
-    path = Path(p)
-    if not path.exists() or path.stat().st_size > 15 * 1024 * 1024:
+    try:
+        data = get_media_bytes(p)
+        if data and len(data) > 15 * 1024 * 1024:  # 15MB limit
+            return None
+        return base64.b64encode(data).decode('utf-8') if data else None
+    except Exception:
         return None
-    return base64.b64encode(path.read_bytes()).decode('utf-8')
 
 
 def get_color_by_year(d):
@@ -652,15 +702,32 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                 photo_paths = []
                 for up in photos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    path = UPLOADS_PHOTOS / fname
-                    path.write_bytes(up.getbuffer())
-                    photo_paths.append(str(path))
+                    # path = UPLOADS_PHOTOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # photo_paths.append(str(path))
+                    file_bytes = up.getbuffer()
+
+                    if os.getenv("K_SERVICE"):
+                        photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_PHOTOS / fname
+                        path.write_bytes(file_bytes)
+                        photo_paths.append(str(path))
+
                 video_paths = []
                 for up in videos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    path = UPLOADS_VIDEOS / fname
-                    path.write_bytes(up.getbuffer())
-                    video_paths.append(str(path))
+                    # path = UPLOADS_VIDEOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # video_paths.append(str(path))
+                    file_bytes = up.getbuffer()
+                    if os.getenv("K_SERVICE"):
+                        video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_VIDEOS / fname
+                        path.write_bytes(file_bytes)
+                        video_paths.append(str(path))
+
 
                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
                 new_event = {
@@ -736,14 +803,32 @@ if st.session_state.editing_event_id:
 
                 for up in add_photos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    path = UPLOADS_PHOTOS / fname
-                    path.write_bytes(up.getbuffer())
-                    event["media"]["photos"].append(str(path))
+                    # path = UPLOADS_PHOTOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # event["media"]["photos"].append(str(path))
+                    file_bytes = up.getbuffer()
+                    if os.getenv("K_SERVICE"):
+                        event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_PHOTOS / fname
+                        path.write_bytes(file_bytes)
+                        event["media"]["photos"].append(str(path))
+
                 for up in add_videos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    path = UPLOADS_VIDEOS / fname
-                    path.write_bytes(up.getbuffer())
-                    event["media"]["videos"].append(str(path))
+                    # path = UPLOADS_VIDEOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # event["media"]["videos"].append(str(path))
+                    file_bytes = up.getbuffer()
+                    if os.getenv("K_SERVICE"):
+                        event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_VIDEOS / fname
+                        path.write_bytes(file_bytes)
+                        event["media"]["videos"].append(str(path))
+
+
+
 
                 JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
                 st.session_state.force_map_refresh += 1
@@ -795,9 +880,25 @@ if "confirm_delete_id" in st.session_state:
                     col_yes, col_no = st.columns(2)
                     with col_yes:
                         if st.button("Yes, delete permanently", type="primary", key=f"confirm_yes_{event['id']}"):
+                            # for p in event["media"].get("photos", []) + event["media"].get("videos", []):
+                            #     if os.path.exists(p):
+                            #         os.remove(p)
+                            # Delete media files (GCS or local)
                             for p in event["media"].get("photos", []) + event["media"].get("videos", []):
-                                if os.path.exists(p):
-                                    os.remove(p)
+                                try:
+                                    if p.startswith("gs://"):
+                                        parts = p[5:].split("/", 1)
+                                        bucket_name = parts[0]
+                                        blob_path = parts[1] if len(parts) > 1 else ""
+                                        storage.Client().bucket(bucket_name).blob(blob_path).delete()
+                                    else:
+                                        path = Path(p)
+                                        if path.exists():
+                                            path.unlink()
+                                except Exception:
+                                    pass  # Best-effort deletion
+
+
                             st.session_state.data["events"] = [e for e in st.session_state.data["events"] if
                                                                e["id"] != event["id"]]
                             JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
