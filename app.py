@@ -918,8 +918,11 @@ def is_gcp_environment():
     except:
         return False
 
-is_GCP = is_gcp_environment()
-st.sidebar.markdown("IsGCP? : {is_GCP} ")
+if is_gcp_environment():
+    st.sidebar.markdown("IsGCP? : Enabled" )
+else:
+    st.sidebar.markdown("IsGCP? : Disabled")
+
 st.sidebar.markdown("### 🛠️ Debug Mode Info")
 if os.getenv("K_SERVICE"):
     st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE: {os.getenv('K_SERVICE')})")
