@@ -81,11 +81,15 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-JSON_FILE = (BASE_DIR / args.file).resolve()
+#JSON_FILE = (BASE_DIR / args.file).resolve()
+JSON_FILE = BASE_DIR / "life_events.json"
 
-st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`")
+# st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = "life_events.json"
 
-# JSON_FILE = BASE_DIR / "life_events.json"
+st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
+
 
 # ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
 # Get filename without extension and path
@@ -172,7 +176,34 @@ if data["events"]:
 
 # Final dynamic title
 #full_title = f"🌍 {display_name} - Map{timeline_info}"
-full_title = f"🌍 Life Events - Map {timeline_info}  - test version"
+# full_title = f"🌍 Life Events - Map {timeline_info}  - test version"
+# ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
+json_filename = JSON_FILE.name
+display_name = json_filename.replace(".json", "").replace("_", " ").replace("-", " ")
+display_name = " ".join(word.capitalize() for word in display_name.split())
+
+memory_count = len(st.session_state.data.get("events", []))
+
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+    start_year = min(dates).year
+    end_year = max(dates).year
+    timeline_info = f" ({start_year}–{end_year})"
+else:
+    timeline_info = ""
+
+# Updated title: includes filename and count
+full_title = f"🌍 {display_name} • {memory_count} Memories{timeline_info}"
+
+st.set_page_config(
+    page_title=full_title,
+    layout="wide",
+    initial_sidebar_state=initial_sidebar
+)
+
+#st.title(full_title)
+
 # ==================== SESSION STATE INITIALIZATION ====================
 if "editing_event_id" not in st.session_state:
     st.session_state.editing_event_id = None
@@ -718,7 +749,7 @@ if st.session_state.editing_event_id:
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.markdown("---")
-st.sidebar.write(f"**{len(st.session_state.data['events'])} memories**")
+st.sidebar.subheader(f" Map ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
@@ -775,6 +806,94 @@ if "confirm_delete_id" in st.session_state:
                             st.rerun()
                 break
 
+
+# Optional: last modified
+#if JSON_FILE.exists():
+#    mtime = datetime.fromtimestamp(JSON_FILE.stat().st_mtime)
+#    st.sidebar.caption(f"Last saved: {mtime.strftime('%Y-%m-%d %H:%M')}")
+
+
+## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
+# SAFETY CHECK: Ensure selected_json_file always exists in session state
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = "life_events.json"
+
+# Optional: Support --file argument to pre-select a different journey on launch
+#if args.file and (BASE_DIR / args.file).exists():
+#    st.session_state.selected_json_file = args.file
+
+# Refresh the list of available JSON files
+local_json_files = get_local_json_files()
+
+st.sidebar.subheader("Maps")
+
+if local_json_files:
+    for json_name in local_json_files:
+        # todo is_current = json_name == JSON_FILE.name
+        is_current = json_name == st.session_state.selected_json_file
+        is_selected = json_name == st.session_state.selected_json_file
+        #cols = st.sidebar.columns([4, 1])  # Main column for button, small one for indicator
+        cols = st.sidebar.columns([1])  # Main column for button, small one for indicator
+
+        with cols[0]:
+            button_label = f"**→ {json_name}**" if is_current else json_name
+            button_type = "primary" if is_current else "secondary"
+            button_help = "Displaying" if is_current else "Click to Display"
+            disabled = is_current
+
+            if st.button(
+                button_label,
+                key=f"load_journey_{json_name}",
+                type=button_type,
+                disabled=disabled,
+                use_container_width=True,
+                help=button_help
+            ):
+                if not is_current:
+                    try:
+                        source_path = BASE_DIR / json_name
+
+                        # Overwrite current JSON file
+                        content = source_path.read_text(encoding="utf-8")
+                        JSON_FILE.write_text(content, encoding="utf-8")
+
+                        # Update selected tracker
+                        st.session_state.selected_json_file = json_name
+
+                        # Clear all relevant caches and session state
+                        st.cache_data.clear()
+                        if "data" in st.session_state:
+                            del st.session_state["data"]
+                        if "editing_event_id" in st.session_state:
+                            del st.session_state["editing_event_id"]
+
+
+                        # Optional: clear map/edit state
+                        keys_to_reset = ["map_center", "map_zoom", "editing_event_id", "force_map_refresh"]
+                        for k in keys_to_reset:
+                            if k in st.session_state:
+                                del st.session_state[k]
+
+                        st.success(f"✅ Loaded journey: **{json_name}**")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to load {json_name}: {e}")
+
+#        with cols[1]:
+#            if is_current:
+#                st.success("Active")
+#            else:
+#                st.write("")  # placeholder for alignment
+
+#    st.sidebar.caption(f"Total JSON files: {len(local_json_files)} • Current: `{JSON_FILE.name}`")
+
+else:
+    pass
+    #st.sidebar.info("No .json files found in the app directory")
+    #st.sidebar.caption("Total JSON files: 0")
+
+
 st.sidebar.markdown("---")
 # Initialize mode in session state if not exists
 if "app_mode" not in st.session_state:
@@ -808,82 +927,8 @@ with col_download:
                 mime="application/json"
             )
 
-# ==================== PULLDOWN TO SWITCH JOURNEY FILE ====================
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔄 Switch Journey")
-
-if local_json_files:
-    current_index = local_json_files.index(JSON_FILE.name) if JSON_FILE.name in local_json_files else 0
-
-    selected_file = st.sidebar.selectbox(
-        "Select journey file to load",
-        options=local_json_files,
-        index=current_index,
-        help="This will overwrite the current journey and refresh immediately"
-    )
-
-    if selected_file != JSON_FILE.name:
-        st.sidebar.warning(f"⚠️ Loading **{selected_file}** will **replace** `{JSON_FILE.name}` permanently")
-
-        col_load, col_cancel = st.sidebar.columns([1, 2])
-        with col_load:
-            if st.button("🔄 Load & Overwrite", type="primary", use_container_width=True):
-                try:
-                    source_path = BASE_DIR / selected_file
-
-                    # Step 1: Overwrite life_events.json
-                    content = source_path.read_text(encoding="utf-8")
-                    JSON_FILE.write_text(content, encoding="utf-8")
-
-                    # Step 2: Clear ALL Streamlit caches
-                    st.cache_data.clear()
-                    st.cache_resource.clear()  # if you use @st.cache_resource anywhere
-
-                    # Step 3: Clear session state to avoid stale data
-                    keys_to_clear = ['data']
-                    for key in keys_to_clear:
-                        if key in st.session_state:
-                            del st.session_state[key]
-
-                    # Step 4: Show success and force full refresh
-                    st.success(f"✅ Successfully loaded **{selected_file}**")
-                    st.info("App is refreshing with new journey...")
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Failed to load file: {e}")
-        with col_cancel:
-            st.button("Cancel", use_container_width=True)
-    else:
-        st.sidebar.success(f"**{selected_file}** is currently active")
-
-else:
-    st.sidebar.info("No .json files found in the app directory")
-
-st.sidebar.caption(f"Found {len(local_json_files)} journey file(s) • Active: `{JSON_FILE.name}`")
-
-
-
-
-
-
-## ==================== NEW: DISPLAY JSON FILES AT BOTTOM OF SIDEBAR ====================
-#st.sidebar.markdown("---")
-#st.sidebar.subheader("📄 Available Journey Files")
-#
-#if local_json_files:
-#    for json_name in local_json_files:
-#        if json_name == JSON_FILE.name:
-#            st.sidebar.success(f"**→ {json_name}** (current)")
-#        else:
-#            st.sidebar.write(f"{json_name}")
-#else:
-#    st.sidebar.info("No .json files found in the app directory")
-#
-#st.sidebar.caption(f"Total JSON files: {len(local_json_files)} • Current: `{JSON_FILE.name}`")
-
 # ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
-st.sidebar.markdown("---")
+#st.sidebar.markdown("---")
 with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
 
@@ -985,5 +1030,6 @@ with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
             st.error("Invalid JSON file — could not parse.")
         except Exception as e:
             st.error(f"Error: {e}")
+st.sidebar.markdown("---")
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
