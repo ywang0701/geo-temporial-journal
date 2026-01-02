@@ -44,12 +44,25 @@ if os.getenv("K_SERVICE"):  # Running on Cloud Run
         blob.upload_from_string(file_bytes, content_type=content_type)
         return f"gs://{BUCKET_NAME}/{destination_blob_name}"
 
+    def download_from_gcs(blob_name):
+        blob = bucket.blob(blob_name)
+        return blob.download_as_bytes()
+
+
+    def list_journey_blobs():
+        return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
+
+
+    def get_json_path(json_name):
+        return f"{JOURNEYS_FOLDER}/{json_name}"
+
 else:
     # Local development fallback
     UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
     UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
     UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+
 DEFAULT_ACTIVE_JSON="life_events.json"
 
 import streamlit as st
@@ -109,6 +122,8 @@ args = parser.parse_args()
 if "selected_json_file" not in st.session_state:
     st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
+JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if os.getenv("K_SERVICE") else str(BASE_DIR / st.session_state.selected_json_file)
+
 #JSON_FILE = (BASE_DIR / args.file).resolve()
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
 st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
@@ -151,25 +166,55 @@ def ensure_valid_json():
             },
             "events": []
         }
-        JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        # todo JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        save_data_to_storage(st.session_state.data)
 
 
 ensure_valid_json()
 
 
-# ==================== CACHED & SAFE DATA LOADING ====================
+# # ==================== CACHED & SAFE DATA LOADING ====================
+# @st.cache_data(show_spinner=False)
+# def load_data_from_file(_file_path: Path):
+#     try:
+#         text = _file_path.read_text(encoding="utf-8")
+#         if not text.strip():
+#             raise ValueError("File is empty")
+#         data = json.loads(text)
+#         data["events"] = sorted(data["events"], key=lambda x: x.get("date", "0000-00-00"))
+#         return data
+#     except Exception as e:
+#         logger.warning(f"Corrupted data file detected: {e}. Resetting to default.")
+#         st.warning("Data file was corrupted or empty. It has been reset to default.")
+#         default_data = {
+#             "autobiography": {
+#                 "title": "My Life Journey",
+#                 "author": "Your Name",
+#                 "created_date": datetime.now().strftime("%Y-%m-%d"),
+#                 "last_updated": datetime.now().strftime("%Y-%m-%d")
+#             },
+#             "events": []
+#         }
+#         _file_path.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+#         return default_data
+#
+
+# Load data from GCS or local
 @st.cache_data(show_spinner=False)
-def load_data_from_file(_file_path: Path):
+def load_data_from_file(blob_or_path):
     try:
-        text = _file_path.read_text(encoding="utf-8")
+        if os.getenv("K_SERVICE"):
+            data_bytes = download_from_gcs(blob_or_path)
+            text = data_bytes.decode("utf-8")
+        else:
+            text = Path(blob_or_path).read_text(encoding="utf-8")
         if not text.strip():
-            raise ValueError("File is empty")
+            raise ValueError("Empty")
         data = json.loads(text)
         data["events"] = sorted(data["events"], key=lambda x: x.get("date", "0000-00-00"))
         return data
     except Exception as e:
-        logger.warning(f"Corrupted data file detected: {e}. Resetting to default.")
-        st.warning("Data file was corrupted or empty. It has been reset to default.")
+        # Create default if missing
         default_data = {
             "autobiography": {
                 "title": "My Life Journey",
@@ -179,15 +224,31 @@ def load_data_from_file(_file_path: Path):
             },
             "events": []
         }
-        _file_path.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        save_data_to_storage(default_data)
         return default_data
 
+def save_data_to_storage(data):
+    json_text = json.dumps(data, indent=4, ensure_ascii=False)
+    if os.getenv("K_SERVICE"):
+        upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
+    else:
+        Path(JSON_FILE).write_text(json_text, encoding="utf-8")
 
 if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
-    st.session_state.data = load_data_from_file(JSON_FILE)
+    st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
 data = st.session_state.data
+
+# List journeys
+def get_local_json_files():
+    if os.getenv("K_SERVICE"):
+        blobs = list_journey_blobs()
+        return [os.path.basename(b) for b in blobs]
+    else:
+        return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
+
+local_json_files = get_local_json_files()
 
 # Calculate timeline year range (only if there are events)
 timeline_info = ""
@@ -739,7 +800,8 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                     "media": {"photos": photo_paths, "videos": video_paths}
                 }
                 st.session_state.data["events"].append(new_event)
-                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                save_data_to_storage(st.session_state.data)
                 st.session_state.force_map_refresh += 1
                 st.success("Memory added!")
                 st.rerun()
@@ -775,8 +837,9 @@ if st.session_state.editing_event_id:
                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
                                 os.remove(p)
                                 event["media"][mtype].remove(p)
-                                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-                                                     encoding="utf-8")
+                                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                                #                     encoding="utf-8")
+                                save_data_to_storage(st.session_state.data)
                                 st.rerun()
             else:
                 st.sidebar.info(f"No {label.lower()}")
@@ -830,7 +893,8 @@ if st.session_state.editing_event_id:
 
 
 
-                JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                save_data_to_storage(st.session_state.data)
                 st.session_state.force_map_refresh += 1
                 st.session_state.editing_event_id = None
                 st.success("Changes saved!")
@@ -901,8 +965,9 @@ if "confirm_delete_id" in st.session_state:
 
                             st.session_state.data["events"] = [e for e in st.session_state.data["events"] if
                                                                e["id"] != event["id"]]
-                            JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-                                                 encoding="utf-8")
+                            # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                            #                     encoding="utf-8")
+                            save_data_to_storage(st.session_state.data)
                             st.session_state.force_map_refresh += 1
                             if "confirm_delete_id" in st.session_state:
                                 del st.session_state.confirm_delete_id
@@ -1062,8 +1127,9 @@ with st.sidebar.expander("✨ Create New Journey", expanded=False):
 
                             # Switch to the new journey
                             st.session_state.selected_json_file = new_filename
-                            JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False),
-                                                 encoding="utf-8")
+                            save_data_to_storage(st.session_state.data)
+                            # todo JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False),
+                            #                     encoding="utf-8")
 
                             # Clear cache and reset state
                             st.cache_data.clear()
@@ -1157,10 +1223,11 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
                                 # If renaming the current active journey, update the active file too
                                 is_current = journey_to_rename == st.session_state.selected_json_file
                                 if is_current:
-                                    JSON_FILE.write_text(
-                                        json.dumps(current_data, indent=4, ensure_ascii=False),
-                                        encoding="utf-8"
-                                    )
+                                    save_data_to_storage(st.session_state.data)
+                                    # todo JSON_FILE.write_text(
+                                    # todo     json.dumps(current_data, indent=4, ensure_ascii=False),
+                                    # todo     encoding="utf-8"
+                                    # todo )
                                     st.session_state.selected_json_file = new_filename
 
                                 # Delete old file
