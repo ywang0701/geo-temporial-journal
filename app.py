@@ -194,7 +194,7 @@ else:
     timeline_info = ""
 
 # Updated title: includes filename and count
-full_title = f"🌍 {display_name} • {memory_count} Memories{timeline_info}"
+full_title = f"🌍 Journey ({display_name}) has {memory_count} Places {timeline_info}"
 
 st.set_page_config(
     page_title=full_title,
@@ -749,7 +749,7 @@ if st.session_state.editing_event_id:
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.markdown("---")
-st.sidebar.subheader(f" Map ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
+st.sidebar.subheader(f" Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
@@ -825,7 +825,7 @@ if "selected_json_file" not in st.session_state:
 # Refresh the list of available JSON files
 local_json_files = get_local_json_files()
 
-st.sidebar.subheader("Maps")
+st.sidebar.subheader("Your Journies")
 
 if local_json_files:
     for json_name in local_json_files:
@@ -893,43 +893,21 @@ else:
     #st.sidebar.info("No .json files found in the app directory")
     #st.sidebar.caption("Total JSON files: 0")
 
-
-st.sidebar.markdown("---")
-# Initialize mode in session state if not exists
-if "app_mode" not in st.session_state:
-    st.session_state.app_mode = "View Mode"  # Default
-
-col_mode, col_download = st.sidebar.columns([1, 1])
-
-with col_mode:
-    mode = st.radio(
-        "Mode:",
-        options=["View Mode", "Edit Mode"],
-        index=0 if st.session_state.app_mode == "View Mode" else 1,
-        horizontal=False,
-        label_visibility="collapsed",
-        key="mode_radio"  # Important: give it a key so Streamlit tracks it
-    )
-
-    # Update session state when user changes mode
-    if mode != st.session_state.app_mode:
-        st.session_state.app_mode = mode
-        st.rerun()  # TODO Optional: force immediate refresh for snappy feel
-
-with col_download:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 Backup Memories"):
-        with open(JSON_FILE, "rb") as f:
-            st.download_button(
-                "⬇️ Backup JSON",
-                f,
-                file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-                mime="application/json"
-            )
-
+# ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
+st.sidebar.markdown("**Journey Operations**")
+#st.sidebar.markdown("<br>", unsafe_allow_html=True)  # Optional spacing
+if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
+    with open(JSON_FILE, "rb") as f:
+        st.download_button(
+            label="⬇️ Download Backup JSON",
+            data=f,
+            file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
 # ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
 #st.sidebar.markdown("---")
-with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
+with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
 
     uploaded_file = st.file_uploader(
@@ -1030,6 +1008,83 @@ with st.sidebar.expander("📤 Upload & Restore Journey", expanded=False):
             st.error("Invalid JSON file — could not parse.")
         except Exception as e:
             st.error(f"Error: {e}")
-st.sidebar.markdown("---")
 
+    # ==================== DELETE JOURNEY FILE ====================
+with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
+    st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
+
+    available_for_deletion = [
+        f for f in local_json_files
+        if f != st.session_state.selected_json_file  # Never allow deleting the active one
+    ]
+
+    if not available_for_deletion:
+        st.info("No other journey files available to delete.")
+    else:
+        file_to_delete = st.selectbox(
+            "Select a journey to delete",
+            options=available_for_deletion,
+            help="Only inactive journeys can be deleted"
+        )
+
+        # Preview what will be deleted
+        preview_path = BASE_DIR / file_to_delete
+        if preview_path.exists():
+            try:
+                preview_data = json.loads(preview_path.read_text(encoding="utf-8"))
+                event_count = len(preview_data.get("events", []))
+                title = preview_data.get("autobiography", {}).get("title", "Untitled")
+                st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+            except:
+                st.write(f"File: `{file_to_delete}` (preview unavailable)")
+
+        col_confirm, col_cancel = st.columns(2)
+
+        with col_confirm:
+            if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
+                try:
+                    # Delete the JSON file
+                    preview_path.unlink()
+
+                    # Also delete all associated media files
+                    for item in preview_data.get("events", []):
+                        for media_type in ["photos", "videos"]:
+                            for path_str in item.get("media", {}).get(media_type, []):
+                                media_path = Path(path_str)
+                                if media_path.exists():
+                                    try:
+                                        media_path.unlink()
+                                    except:
+                                        pass  # Best effort
+
+                    st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to delete: {e}")
+
+        with col_cancel:
+            st.button("Cancel", type="secondary", use_container_width=True)
+
+# ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
+# Create a single row with label and radio buttons
+col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
+
+with col_label:
+    st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
+    # The padding-top aligns it vertically with the radio buttons
+
+with col_radio:
+    mode = st.radio(
+        label="Mode selection (hidden)",           # Hidden real label
+        options=["View Mode", "Edit Mode"],
+        index=0 if st.session_state.app_mode == "View Mode" else 1,
+        horizontal=True,
+        label_visibility="collapsed",              # Hide the actual label
+        key="mode_radio"
+    )
+
+# Update session state when mode changes
+if mode != st.session_state.app_mode:
+    st.session_state.app_mode = mode
+    st.rerun()
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
