@@ -1,3 +1,4 @@
+import select
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -28,6 +29,8 @@ UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
 UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
 UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
 UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_ACTIVE_JSON="life_events.json"
 
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
@@ -76,24 +79,25 @@ parser = argparse.ArgumentParser(description="My Life Journey App")
 parser.add_argument(
     "--file",
     type=str,
-    default="life_events.json",
-    help="Path to the life events JSON file (default: life_events.json)"
+    default=DEFAULT_ACTIVE_JSON,
+    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
 )
 args = parser.parse_args()
 
-#JSON_FILE = (BASE_DIR / args.file).resolve()
-JSON_FILE = BASE_DIR / "life_events.json"
 
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = "life_events.json"
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
+#JSON_FILE = (BASE_DIR / args.file).resolve()
+JSON_FILE = BASE_DIR / st.session_state.selected_json_file
 st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
 
 
 # ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
 # Get filename without extension and path
-json_filename = JSON_FILE.stem  # e.g., "life_events", "my_family_memories", "john_2025"
+# todo json_filename = JSON_FILE.stem  # e.g., "life_events", "my_family_memories", "john_2025"
+json_filename = st.session_state.selected_json_file # e.g., "life_events", "my_family_memories", "john_2025"
 
 # Clean up common patterns for nicer display
 display_name = json_filename.replace("_", " ").replace("-", " ")
@@ -160,6 +164,7 @@ def load_data_from_file(_file_path: Path):
 
 
 if "data" not in st.session_state:
+    #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_FILE)
 
 data = st.session_state.data
@@ -819,7 +824,7 @@ if "confirm_delete_id" in st.session_state:
 ## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
 # SAFETY CHECK: Ensure selected_json_file always exists in session state
 if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = "life_events.json"
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
 # Optional: Support --file argument to pre-select a different journey on launch
 #if args.file and (BASE_DIR / args.file).exists():
@@ -873,7 +878,7 @@ if local_json_files:
             if not is_current:
                 try:
                     content = file_path.read_text(encoding="utf-8")
-                    JSON_FILE.write_text(content, encoding="utf-8")
+                    # todo JSON_FILE.write_text(content, encoding="utf-8")
 
                     st.session_state.selected_json_file = json_name
 
@@ -1100,22 +1105,30 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
             else:
                 title = uploaded_data["autobiography"].get("title", "Untitled Journey")
                 event_count = len(uploaded_data["events"])
-                st.success(f"Valid backup: **{title}** ({event_count} memories)")
+                st.success(f"Valid backup: **{uploaded_file.name}** ({event_count} memories)")
+                #st.success(f"Valid backup: **{title}** ({event_count} memories)")
 
-                st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{JSON_FILE.name}**")
+                st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{uploaded_file.name}**")
+                # st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{JSON_FILE.name}**")
 
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
                         # 1. Overwrite the current JSON file
-                        JSON_FILE.write_bytes(uploaded_bytes)
+                        #JSON_FILE.write_bytes(uploaded_bytes)
+                        save_path = JSON_FILE.parent / uploaded_file.name
+                        save_path.write_bytes(uploaded_bytes)
 
                         # 2. Update current journey path
-                        st.session_state.current_json_path = JSON_FILE
+                        #st.session_state.current_json_path = JSON_FILE
+                        st.session_state.current_json_path = uploaded_file
 
                         # 3. Clear cache and reload data properly
                         load_data_from_file.clear()  # This clears the @st.cache_data
-                        st.session_state.data = load_data_from_file(JSON_FILE)
+                        #st.session_state.data = load_data_from_file(JSON_FILE)
+                        st.session_state.data = load_data_from_file(save_path)
+
+                        st.session_state.selected_json_file = uploaded_file.name # todo
 
                         # 4. Force full refresh
                         st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
@@ -1132,6 +1145,7 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
                             del st.session_state.editing_event_id
 
                         st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
+                        st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{uploaded_file}**")
                         st.rerun()
 
                 with col2:
