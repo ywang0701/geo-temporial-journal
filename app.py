@@ -905,6 +905,21 @@ if st.session_state.editing_event_id:
             st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
+import requests
+
+def is_gcp_environment():
+    try:
+        response = requests.get(
+            "http://metadata.google.internal/computeMetadata/v1/instance/id",
+            headers={"Metadata-Flavor": "Google"},
+            timeout=1
+        )
+        return response.status_code == 200
+    except:
+        return False
+
+is_GCP = is_gcp_environment()
+st.sidebar.markdown("IsGCP? : {is_GCP} ")
 st.sidebar.markdown("### 🛠️ Debug Mode Info")
 if os.getenv("K_SERVICE"):
     st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE: {os.getenv('K_SERVICE')})")
