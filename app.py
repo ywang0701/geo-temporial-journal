@@ -96,7 +96,7 @@ st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file
 
 # ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
 # Get filename without extension and path
-# todo json_filename = JSON_FILE.stem  # e.g., "life_events", "my_family_memories", "john_2025"
+# json_filename = JSON_FILE.stem  # e.g., "life_events", "my_family_memories", "john_2025"
 json_filename = st.session_state.selected_json_file # e.g., "life_events", "my_family_memories", "john_2025"
 
 # Clean up common patterns for nicer display
@@ -878,7 +878,8 @@ if local_json_files:
             if not is_current:
                 try:
                     content = file_path.read_text(encoding="utf-8")
-                    # todo JSON_FILE.write_text(content, encoding="utf-8")
+                    # skip writting to life_events.json
+                    # JSON_FILE.write_text(content, encoding="utf-8")
 
                     st.session_state.selected_json_file = json_name
 
@@ -1125,10 +1126,10 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
 
                         # 3. Clear cache and reload data properly
                         load_data_from_file.clear()  # This clears the @st.cache_data
-                        #st.session_state.data = load_data_from_file(JSON_FILE)
                         st.session_state.data = load_data_from_file(save_path)
 
-                        st.session_state.selected_json_file = uploaded_file.name # todo
+                        # 3.5 Assign the active json
+                        st.session_state.selected_json_file = uploaded_file.name
 
                         # 4. Force full refresh
                         st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
@@ -1144,7 +1145,7 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
                         if "editing_event_id" in st.session_state:
                             del st.session_state.editing_event_id
 
-                        st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
+                        # st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
                         st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{uploaded_file}**")
                         st.rerun()
 
