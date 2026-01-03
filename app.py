@@ -280,6 +280,7 @@ def save_data_to_storage(data):
         logger.info(f" Save to cloud {JSON_BLOB_NAME}")
         upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
     else:
+        logger.info(f" Save to local {JSON_FILE}")
         Path(JSON_FILE).write_text(json_text, encoding="utf-8")
 
 if "data" not in st.session_state:
@@ -1218,7 +1219,7 @@ with st.sidebar.expander("✨ Create New Journey", expanded=False):
 #st.sidebar.markdown("---")
 with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
     st.write("Change the name of an existing journey. This renames the file and updates the title.")
-
+    logger.info(f"json list {local_json_files}")
     # Exclude none to force selection
     journey_to_rename = st.selectbox(
         "Select journey to rename",
@@ -1230,6 +1231,8 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
 
     if journey_to_rename:
         current_path = BASE_DIR / journey_to_rename
+        logger.info(f"Current path: {current_path.name}")
+        logger.info(f"Current path: {current_path}")
         try:
             current_data = json.loads(current_path.read_text(encoding="utf-8"))
             current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
@@ -1281,6 +1284,7 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
 
                                 # If renaming the current active journey, update the active file too
                                 is_current = journey_to_rename == st.session_state.selected_json_file
+                                logger.info(f"Journey renamed to **{new_journey_name}**")
                                 if is_current:
                                     save_data_to_storage(st.session_state.data)
                                     # todo JSON_FILE.write_text(
