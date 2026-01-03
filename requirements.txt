@@ -3,3 +3,4 @@ folium
 streamlit-folium
 geopy
 google-cloud-storage==2.18.2
+google-auth
