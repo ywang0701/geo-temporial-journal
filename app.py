@@ -1446,7 +1446,7 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 
         # Preview what will be deleted
         preview_path = BASE_DIR / file_to_delete
-        logger.info("preview_path {preview_path}")
+        logger.info("preview_path *** !!! ". preview_path)
 
         if preview_path.exists():
             try:
@@ -1454,6 +1454,8 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
                 event_count = len(preview_data.get("events", []))
                 title = preview_data.get("autobiography", {}).get("title", "Untitled")
                 st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+                logger.info(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+
             except:
                 st.write(f"File: `{file_to_delete}` (preview unavailable)")
 
