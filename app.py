@@ -1468,7 +1468,7 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
                     # Delete the JSON file
                     if IS_CLOUD:
                         blog_delete = bucket.blob(get_json_path(file_to_delete))
-                        blob.delete()
+                        blob_delete.delete()
                         st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
                         pass
                     else:
