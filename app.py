@@ -1231,7 +1231,7 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
 
     if journey_to_rename:
         current_path = BASE_DIR / journey_to_rename
-        logger.info(f"Current path: {current_path.name}")
+        logger.info(f"Current name: {current_path.name}")
         logger.info(f"Current path: {current_path}")
         try:
             current_data = json.loads(current_path.read_text(encoding="utf-8"))
@@ -1434,7 +1434,7 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         f for f in local_json_files
         if f != st.session_state.selected_json_file  # Never allow deleting the active one
     ]
-
+    logger.info("available file_for_deletion {available_for_deletion}")
     if not available_for_deletion:
         st.info("No other journey files available to delete.")
     else:
@@ -1446,6 +1446,8 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 
         # Preview what will be deleted
         preview_path = BASE_DIR / file_to_delete
+        logger.info("preview_path {preview_path}")
+
         if preview_path.exists():
             try:
                 preview_data = json.loads(preview_path.read_text(encoding="utf-8"))
