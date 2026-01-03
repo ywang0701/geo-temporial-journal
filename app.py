@@ -26,6 +26,25 @@ DEFAULT_ACTIVE_JSON="life_events.json"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create a formatter with timestamp
+formatter = logging.Formatter(
+    fmt='%(asctime)s | %(levelname)8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# StreamHandler sends output to console (visible in Streamlit Cloud logs)
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+# Only add handler once (important for Streamlit reruns)
+if not logger.handlers:
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)   # Change to DEBUG for more verbose output
+
+# Quick test log on startup
+logger.info("🚀 App started")
+logger.info(f"Detected IS_CLOUD = {os.getenv('DEPLOY_ENV') == 'cloud'}")
+
 if "selected_json_file" not in st.session_state:
     st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
@@ -229,6 +248,7 @@ ensure_valid_json()
 def load_data_from_file(blob_or_path):
     try:
         #if os.getenv("K_SERVICE1"):
+        logger.info(f"📂 Attempting to load data from: {blob_or_path}")
         if IS_CLOUD:
             data_bytes = download_from_gcs(blob_or_path)
             text = data_bytes.decode("utf-8")
@@ -257,6 +277,7 @@ def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
     #if os.getenv("K_SERVICE1"):
     if IS_CLOUD:
+        logger.info(f" Save to cloud {JSON_BLOB_NAME}")
         upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
     else:
         Path(JSON_FILE).write_text(json_text, encoding="utf-8")
