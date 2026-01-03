@@ -1466,13 +1466,15 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
             if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
                 try:
                     # Delete the JSON file
-                    if IS_CLOUD:
-                        #blog_delete = bucket.blob(get_json_path(file_to_delete))
-                        #blob_delete.delete()
-                        st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
-                        pass
-                    else:
-                        preview_path.unlink()
+                    # if IS_CLOUD:
+                    #     #blog_delete = bucket.blob(get_json_path(file_to_delete))
+                    #     #blob_delete.delete()
+                    #     st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
+                    #     pass
+                    # else:
+                    #     preview_path.unlink()
+
+                    preview_path.unlink()
 
                     # Also delete all associated media files
                     for item in preview_data.get("events", []):
