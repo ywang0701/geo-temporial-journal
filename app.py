@@ -1447,7 +1447,7 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 
         # Preview what will be deleted
         preview_path = BASE_DIR / file_to_delete
-        logger.info("preview_path *** !!! ". preview_path)
+        logger.info(f"preview_path *** !!! {preview_path}) ")
 
         if preview_path.exists():
             try:
