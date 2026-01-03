@@ -20,19 +20,19 @@ import os
 from google.cloud import storage
 from google.oauth2 import service_account
 
+DEFAULT_ACTIVE_JSON="life_events.json"
+
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys.executable).parent
 else:
     BASE_DIR = Path(__file__).resolve().parent
-
-#UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
-#UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
-#UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
-#UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
 BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 
@@ -43,29 +43,13 @@ PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
 
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
-# Use a simple custom env var (recommended) or auto-detect GCP
-# Option A: Custom env var (set in Streamlit Cloud Settings → Environment variables)
 IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
 
-# Option B: Auto-detect GCP (no extra config needed)
-# import requests
-# def is_on_gcp():
-#     try:
-#         requests.get("http://metadata.google.internal", timeout=2, headers={"Metadata-Flavor": "Google"})
-#         return True
-#     except:
-#         return False
-# IS_CLOUD = is_on_gcp()
-
-
-#if IS_CLOUD:
-if True:
+if IS_CLOUD:
     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
 
     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
-    # Use the exact section name you used in secrets.toml
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
-    # or st.secrets["connections.gcs"] if you used that
 
     # Create client with explicit credentials and project
     storage_client = storage.Client(
@@ -73,15 +57,13 @@ if True:
         project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
     )
     bucket = storage_client.bucket(BUCKET_NAME)
-
     # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
-
 else:
     st.sidebar.info("🖥️ Running locally (using filesystem)")
     # Your local fallback code (UPLOADS_PHOTOS, etc.)
 
-
-if os.getenv("K_SERVICE1"):  # Running on Cloud Run
+#if os.getenv("K_SERVICE1"):  # Running on Cloud Run
+if IS_CLOUD:
     #storage_client = storage.Client()
     #bucket = storage_client.bucket(BUCKET_NAME)
 
@@ -109,7 +91,7 @@ else:
     UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
-DEFAULT_ACTIVE_JSON="life_events.json"
+#DEFAULT_ACTIVE_JSON="life_events.json"
 
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
@@ -118,11 +100,7 @@ import streamlit.components.v1 as components  # ← Correct import for current S
 if "device_type" not in st.session_state:
     detect_js = """
     <script>
-        function detectDevice() {
-            const width = window.innerWidth;
-            const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-            const ua = navigator.userAgent.toLowerCase();
-            const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+        function detectDevice() { const width = window.innerWidth; const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0; const ua = navigator.userAgent.toLowerCase(); const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
 
             if (width <= 768 && (hasTouch || isMobileUA)) {
                 return "mobile";
@@ -165,10 +143,11 @@ args = parser.parse_args()
 
 
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
-if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
+#if "selected_json_file" not in st.session_state:
+#    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
-JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if os.getenv("K_SERVICE1") else str(BASE_DIR / st.session_state.selected_json_file)
+#JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if os.getenv("K_SERVICE1") else str(BASE_DIR / st.session_state.selected_json_file)
+JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 
 #JSON_FILE = (BASE_DIR / args.file).resolve()
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
@@ -249,7 +228,8 @@ ensure_valid_json()
 @st.cache_data(show_spinner=False)
 def load_data_from_file(blob_or_path):
     try:
-        if os.getenv("K_SERVICE1"):
+        #if os.getenv("K_SERVICE1"):
+        if IS_CLOUD:
             data_bytes = download_from_gcs(blob_or_path)
             text = data_bytes.decode("utf-8")
         else:
@@ -275,7 +255,8 @@ def load_data_from_file(blob_or_path):
 
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
-    if os.getenv("K_SERVICE1"):
+    #if os.getenv("K_SERVICE1"):
+    if IS_CLOUD:
         upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
     else:
         Path(JSON_FILE).write_text(json_text, encoding="utf-8")
@@ -288,7 +269,8 @@ data = st.session_state.data
 
 # List journeys
 def get_local_json_files():
-    if os.getenv("K_SERVICE1"):
+    #if os.getenv("K_SERVICE1"):
+    if IS_CLOUD:
         blobs = list_journey_blobs()
         return [os.path.basename(b) for b in blobs]
     else:
@@ -814,7 +796,8 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                     # photo_paths.append(str(path))
                     file_bytes = up.getbuffer()
 
-                    if os.getenv("K_SERVICE1"):
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
                         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
                     else:
                         path = UPLOADS_PHOTOS / fname
@@ -828,7 +811,8 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                     # path.write_bytes(up.getbuffer())
                     # video_paths.append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE1"):
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
                         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
                     else:
                         path = UPLOADS_VIDEOS / fname
@@ -916,7 +900,8 @@ if st.session_state.editing_event_id:
                     # path.write_bytes(up.getbuffer())
                     # event["media"]["photos"].append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE1"):
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
                         event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
                     else:
                         path = UPLOADS_PHOTOS / fname
@@ -929,7 +914,8 @@ if st.session_state.editing_event_id:
                     # path.write_bytes(up.getbuffer())
                     # event["media"]["videos"].append(str(path))
                     file_bytes = up.getbuffer()
-                    if os.getenv("K_SERVICE1"):
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
                         event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
                     else:
                         path = UPLOADS_VIDEOS / fname
@@ -951,11 +937,11 @@ if st.session_state.editing_event_id:
             st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
-st.sidebar.markdown("### 🛠️ Debug Mode Info")
-if os.getenv("K_SERVICE1"):
-    st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE1: {os.getenv('K_SERVICE1')})")
-else:
-    st.sidebar.warning("⚠️ **Local Mode** (K_SERVICE1 not set)")
+#st.sidebar.markdown("### 🛠️ Debug Mode Info")
+#if os.getenv("K_SERVICE1"):
+#    st.sidebar.success(f"✅ **Cloud Mode** (K_SERVICE1: {os.getenv('K_SERVICE1')})")
+#else:
+#    st.sidebar.warning("⚠️ **Local Mode** (K_SERVICE1 not set)")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader(f"🗺️ Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
@@ -1282,7 +1268,7 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
                                     # todo )
                                     st.session_state.selected_json_file = new_filename
 
-                                # Delete old file
+                                # todo: Delete old file
                                 # current_path.unlink()
 
                                 # Clear cache and reset state
