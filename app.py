@@ -58,7 +58,8 @@ IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cl
 # IS_CLOUD = is_on_gcp()
 
 
-if IS_CLOUD:
+#if IS_CLOUD:
+if True:
     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
 
     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
@@ -81,8 +82,8 @@ else:
 
 
 if os.getenv("K_SERVICE1"):  # Running on Cloud Run
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NAME)
+    #storage_client = storage.Client()
+    #bucket = storage_client.bucket(BUCKET_NAME)
 
     def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
         blob = bucket.blob(destination_blob_name)
