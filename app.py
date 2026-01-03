@@ -35,6 +35,50 @@ else:
 
 BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 
+# === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
+BUCKET_NAME = "journey-journal"
+JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
+PHOTOS_FOLDER = "photos"
+VIDEOS_FOLDER = "videos"
+
+# === DETECT IF RUNNING ON STREAMLIT CLOUD ===
+# Use a simple custom env var (recommended) or auto-detect GCP
+# Option A: Custom env var (set in Streamlit Cloud Settings → Environment variables)
+IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
+
+# Option B: Auto-detect GCP (no extra config needed)
+# import requests
+# def is_on_gcp():
+#     try:
+#         requests.get("http://metadata.google.internal", timeout=2, headers={"Metadata-Flavor": "Google"})
+#         return True
+#     except:
+#         return False
+# IS_CLOUD = is_on_gcp()
+
+if IS_CLOUD:
+    st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
+
+    # Load credentials from secrets (must be under [gcs] or [connections.gcs])
+    # Use the exact section name you used in secrets.toml
+    credentials = service_account.Credentials.from_service_account_info(
+        st.secrets["gcs"]  # or st.secrets["connections.gcs"] if you used that
+    )
+
+    # Create client with explicit credentials and project
+    storage_client = storage.Client(
+        credentials=credentials,
+        project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
+    )
+    bucket = storage_client.bucket(BUCKET_NAME)
+
+    # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
+
+else:
+    st.sidebar.info("🖥️ Running locally (using filesystem)")
+    # Your local fallback code (UPLOADS_PHOTOS, etc.)
+
+
 if os.getenv("K_SERVICE1"):  # Running on Cloud Run
     storage_client = storage.Client()
     bucket = storage_client.bucket(BUCKET_NAME)
