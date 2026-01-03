@@ -62,9 +62,8 @@ if IS_CLOUD:
 
     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
     # Use the exact section name you used in secrets.toml
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcs"]  # or st.secrets["connections.gcs"] if you used that
-    )
+    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
+    # or st.secrets["connections.gcs"] if you used that
 
     # Create client with explicit credentials and project
     storage_client = storage.Client(
