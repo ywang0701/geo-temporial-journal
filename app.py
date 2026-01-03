@@ -57,6 +57,7 @@ IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cl
 #         return False
 # IS_CLOUD = is_on_gcp()
 
+
 if IS_CLOUD:
     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
 
