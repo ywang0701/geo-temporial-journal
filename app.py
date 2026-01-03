@@ -18,6 +18,7 @@ import argparse
 # === NEW IMPORTS FOR GOOGLE CLOUD STORAGE ===
 import os
 from google.cloud import storage
+from google.oauth2 import service_account
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
