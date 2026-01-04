@@ -1186,7 +1186,7 @@ if local_json_files:
                 st.rerun()
 else:
     st.sidebar.info("No journeys found in storage.")
-    
+
 # ==================== CREATE NEW JOURNEY ====================
 #st.sidebar.markdown("---")
 with st.sidebar.expander("✨ Create New Journey", expanded=False):
@@ -1734,7 +1734,7 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
-# # ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
+# # 1st ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
 # if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
 #     with open(JSON_FILE, "rb") as f:
 #         st.download_button(
@@ -1746,21 +1746,55 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 #         )
 #
 
-# ==================== BACKUP / DOWNLOAD (FIXED FOR CLOUD) ====================
-st.sidebar.markdown("---")  # Optional separator for better UX
+# 2nd ==================== BACKUP / DOWNLOAD (FIXED FOR CLOUD) ====================
+# st.sidebar.markdown("---")  # Optional separator for better UX
+#
+# # Always show the download button (fixes cloud rerun issue)
+# with open(JSON_FILE, "rb") as f:
+#     st.sidebar.download_button(
+#         label="💾 Backup Current Journey",
+#         data=f,
+#         file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+#         mime="application/json",
+#         use_container_width=True
+#     )
+#
+# st.sidebar.caption("Downloads a copy of your current journey data.")
 
-# Always show the download button (fixes cloud rerun issue)
-with open(JSON_FILE, "rb") as f:
-    st.sidebar.download_button(
-        label="💾 Backup Current Journey",
-        data=f,
-        file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-        mime="application/json",
-        use_container_width=True
-    )
+# ==================== BACKUP / DOWNLOAD (WORKS ON CLOUD + LOCAL) ====================
+st.sidebar.markdown("---")
 
-st.sidebar.caption("Downloads a copy of your current journey data.")
+if IS_CLOUD:
+    # Fetch current journey data from GCS
+    try:
+        current_blob_name = get_json_path(st.session_state.selected_json_file)
+        json_bytes = download_from_gcs(current_blob_name)
 
+        st.sidebar.download_button(
+            label="💾 Backup Current Journey",
+            data=json_bytes,
+            file_name=f"{st.session_state.selected_json_file.replace('.json', '')}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+            mime="application/json",
+            use_container_width=True
+        )
+        st.sidebar.caption("Downloads your current journey as a JSON backup.")
+    except Exception as e:
+        st.sidebar.error(f"Failed to prepare backup: {e}")
+        logger.error(f"Backup download failed: {e}")
+else:
+    # Local fallback — safe because files are writable locally
+    try:
+        with open(JSON_FILE, "rb") as f:
+            st.sidebar.download_button(
+                label="💾 Backup Current Journey",
+                data=f,
+                file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        st.sidebar.caption("Downloads your current journey as a JSON backup.")
+    except Exception as e:
+        st.sidebar.error(f"Backup failed (local): {e}")
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
