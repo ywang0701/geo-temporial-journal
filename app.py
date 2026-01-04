@@ -20,7 +20,7 @@ import os
 from google.cloud import storage
 from google.oauth2 import service_account
 
-DEFAULT_ACTIVE_JSON="life_events.json"
+DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -161,11 +161,67 @@ args = parser.parse_args()
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
-JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 
+JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
 # st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
 
+# ==================== SCAN FOR JSON FILES ====================
+def get_local_json_files():
+    """Scan the current directory for .json files (excluding hidden and system files)"""
+    json_files = []
+    for item in BASE_DIR.iterdir():
+        if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
+            json_files.append(item.name)
+    return sorted(json_files)
+
+def save_data_to_storage(data):
+    json_text = json.dumps(data, indent=4, ensure_ascii=False)
+    #if os.getenv("K_SERVICE1"):
+    if IS_CLOUD:
+        logger.info(f" Save to cloud {JSON_BLOB_NAME}")
+        upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
+    else:
+        logger.info(f" Save to local {JSON_FILE}")
+        Path(JSON_FILE).write_text(json_text, encoding="utf-8")
+
+# === AUTO-CREATE FIRST JOURNEY IF NONE EXIST ===
+available_journeys = get_local_json_files()
+
+if not available_journeys:
+    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
+    st.session_state.selected_json_file = default_filename
+
+    # Recompute paths with the new selected file
+    #global JSON_BLOB_NAME, JSON_FILE
+    JSON_BLOB_NAME = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
+    JSON_FILE = BASE_DIR / default_filename
+
+    default_data = {
+        "autobiography": {
+            "title": "Your First Journey",
+            "author": "Your Name",
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "last_updated": datetime.now().strftime("%Y-%m-%d")
+        },
+        "events": []
+    }
+
+    # Now safe to save — all paths are defined
+    save_data_to_storage(default_data)
+    logger.info(f"🌟 Created default journey: {default_filename}")
+
+    # Reload data into session state
+    st.session_state.data = default_data
+    data = default_data
+
+    # Refresh list
+    available_journeys = get_local_json_files()
+else:
+    # Normal case: journeys exist
+    pass
+
+local_json_files = available_journeys
 
 # ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
 # Get filename without extension and path
@@ -180,16 +236,38 @@ display_name = " ".join(word.capitalize() for word in display_name.split())
 if not display_name.strip():
     display_name = "My Journey"
 
-# ==================== SCAN FOR JSON FILES ====================
-def get_local_json_files():
-    """Scan the current directory for .json files (excluding hidden and system files)"""
-    json_files = []
-    for item in BASE_DIR.iterdir():
-        if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
-            json_files.append(item.name)
-    return sorted(json_files)
+# Get available journeys (local or cloud)
+available_journeys = get_local_json_files()
+local_json_files   = available_journeys
 
-local_json_files = get_local_json_files()
+# If NO journeys exist at all → create the default one
+if not available_journeys:
+    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
+    default_path_or_blob = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
+
+    # Only create if it really doesn't exist (safety)
+    exists = default_filename in available_journeys
+    if not exists:
+        default_data = {
+            "autobiography": {
+                "title": "Your First Journey",
+                "author": "Your Name",
+                "created_date": datetime.now().strftime("%Y-%m-%d"),
+                "last_updated": datetime.now().strftime("%Y-%m-%d")
+            },
+            "events": []
+        }
+        save_data_to_storage(default_data)  # This uses upload_to_gcs or local write correctly
+        logger.info(f"Created default journey: {default_filename}")
+
+        # Ensure it's selected
+        st.session_state.selected_json_file = default_filename
+
+    available_journeys = get_local_json_files()  # Refresh list
+
+#local_json_files = get_local_json_files()
+local_json_files = available_journeys
+
 
 # ==================== ROBUST DATA INITIALIZATION ====================
 def ensure_valid_json():
@@ -236,15 +314,6 @@ def load_data_from_file(blob_or_path):
         save_data_to_storage(default_data)
         return default_data
 
-def save_data_to_storage(data):
-    json_text = json.dumps(data, indent=4, ensure_ascii=False)
-    #if os.getenv("K_SERVICE1"):
-    if IS_CLOUD:
-        logger.info(f" Save to cloud {JSON_BLOB_NAME}")
-        upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
-    else:
-        logger.info(f" Save to local {JSON_FILE}")
-        Path(JSON_FILE).write_text(json_text, encoding="utf-8")
 
 if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
@@ -300,7 +369,10 @@ else:
     timeline_info = ""
 
 # Updated title: includes filename and count
-full_title = f"🌍 Journey ({display_name}) has {memory_count} Places {timeline_info}"
+event_count = len(st.session_state.data.get("events", []))
+place_text = "place" if event_count == 1 else "places"
+
+full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
 
 st.set_page_config(
     page_title=full_title,
@@ -914,7 +986,11 @@ if st.session_state.editing_event_id:
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 
 st.sidebar.markdown("---")
-st.sidebar.subheader(f"🗺️ Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
+# st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
+event_count = len(st.session_state.data.get("events", []))
+place_text = "place" if event_count == 1 else "places"
+
+st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
@@ -1364,7 +1440,7 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
                             logger.error(f"Restore error: {e}")
 
                 with col2:
-                    if st.button("❌ Cancel", type="secondary", use_container_width=True):
+                    if st.button("❌ Cancel", type="secondary", use_container_width=True, key="restore_cancel_button"):
                         st.info("Restore cancelled.")
 
         except json.JSONDecodeError:
