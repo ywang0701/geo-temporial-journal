@@ -1063,81 +1063,130 @@ if "selected_json_file" not in st.session_state:
 # Refresh the list of available JSON files
 local_json_files = get_local_json_files()
 
-# ==================== JOURNEY SELECTION WITH MEMORY COUNT ====================
+# # ==================== JOURNEY SELECTION WITH MEMORY COUNT ====================
+# st.sidebar.subheader("📍 My Journeys")
+#
+# if local_json_files:
+#     for json_name in sorted(local_json_files):  # Optional: sort alphabetically
+#         file_path = BASE_DIR / json_name
+#         is_current = json_name == st.session_state.selected_json_file
+#
+#         # Load and count events safely
+#         try:
+#             temp_data = json.loads(file_path.read_text(encoding="utf-8"))
+#             event_count = len(temp_data.get("events", []))
+#             title = temp_data.get("autobiography", {}).get("title", json_name.replace(".json", ""))
+#             title = json_name # todo
+#             count_text = f"{event_count} place{'s' if event_count != 1 else ''}"
+#         except Exception:
+#             event_count = 0
+#             title = json_name.replace(".json", "")
+#             count_text = "0 places"
+#
+#         # Button label: bold arrow for current, nice formatting
+#         if is_current:
+#             button_label = f"**→ {title}** • {count_text}".ljust(45,"_")
+#             #button_label = f"**→ {title}** • {count_text}"
+#             button_type = "primary"
+#             help_text = "Currently viewing this journey"
+#             disabled = True
+#         else:
+#             button_label = f"{title} • {count_text}".ljust(40,"_")
+#             #button_label = f"{title} • {count_text}"
+#             button_type = "secondary"
+#             help_text = f"Switch to this journey ({event_count} memories)"
+#             disabled = False
+#
+#         if st.sidebar.button(
+#             label=button_label,
+#             key=f"load_journey_{json_name}",
+#             type=button_type,
+#             disabled=disabled,
+#             use_container_width=True,
+#             help=help_text
+#         ):
+#             if not is_current:
+#                 try:
+#                     content = file_path.read_text(encoding="utf-8")
+#                     # skip writting to life_events.json
+#                     # JSON_FILE.write_text(content, encoding="utf-8")
+#
+#                     st.session_state.selected_json_file = json_name
+#
+#                     # Clear cache and reload data
+#                     st.cache_data.clear()
+#                     if "data" in st.session_state:
+#                         del st.session_state["data"]
+#                     if "editing_event_id" in st.session_state:
+#                         del st.session_state["editing_event_id"]
+#
+#                     # Reset map and editing state
+#                     keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
+#                     for k in keys_to_reset:
+#                         if k in st.session_state:
+#                             del st.session_state[k]
+#
+#                     st.success(f"✅ Switched to: **{title}** ({event_count} memories)")
+#                     st.rerun()
+#
+#                 except Exception as e:
+#                     st.error(f"Failed to load {json_name}: {e}")
+#
+# else:
+#     st.sidebar.info("No journey files found. Create one by adding memories!")
+#
+# st.sidebar.markdown("**Journey Operations**")
+# # st.sidebar.markdown("<br>", unsafe_allow_html=True)  # Optional spacing
+
+# ==================== MY JOURNEYS (IMPROVED SWITCHING + RELOAD) ====================
 st.sidebar.subheader("📍 My Journeys")
 
-if local_json_files:
-    for json_name in sorted(local_json_files):  # Optional: sort alphabetically
-        file_path = BASE_DIR / json_name
-        is_current = json_name == st.session_state.selected_json_file
+local_json_files = get_local_json_files()  # Refreshed list
 
-        # Load and count events safely
+if local_json_files:
+    for json_name in sorted(local_json_files):
         try:
-            temp_data = json.loads(file_path.read_text(encoding="utf-8"))
+            blob_or_path = get_json_path(json_name) if IS_CLOUD else str(BASE_DIR / json_name)
+            temp_data = load_data_from_file(blob_or_path)
             event_count = len(temp_data.get("events", []))
             title = temp_data.get("autobiography", {}).get("title", json_name.replace(".json", ""))
-            title = json_name # todo
             count_text = f"{event_count} place{'s' if event_count != 1 else ''}"
-        except Exception:
+        except:
             event_count = 0
             title = json_name.replace(".json", "")
-            count_text = "0 places"
+            count_text = "0 places (load error)"
 
-        # Button label: bold arrow for current, nice formatting
+        is_current = json_name == st.session_state.selected_json_file
+
         if is_current:
-            button_label = f"**→ {title}** • {count_text}".ljust(45,"_")
-            #button_label = f"**→ {title}** • {count_text}"
-            button_type = "primary"
-            help_text = "Currently viewing this journey"
+            button_label = f"**→ {title}** • {count_text}"
             disabled = True
         else:
-            button_label = f"{title} • {count_text}".ljust(40,"_")
-            #button_label = f"{title} • {count_text}"
-            button_type = "secondary"
-            help_text = f"Switch to this journey ({event_count} memories)"
+            button_label = f"{title} • {count_text}"
             disabled = False
 
         if st.sidebar.button(
-            label=button_label,
-            key=f"load_journey_{json_name}",
-            type=button_type,
+            button_label,
+            key=f"journey_switch_{json_name}",
             disabled=disabled,
-            use_container_width=True,
-            help=help_text
+            use_container_width=True
         ):
             if not is_current:
-                try:
-                    content = file_path.read_text(encoding="utf-8")
-                    # skip writting to life_events.json
-                    # JSON_FILE.write_text(content, encoding="utf-8")
+                st.session_state.selected_json_file = json_name
 
-                    st.session_state.selected_json_file = json_name
+                # FORCE FULL RELOAD
+                st.cache_data.clear()
+                if "data" in st.session_state:
+                    del st.session_state["data"]
+                if "editing_event_id" in st.session_state:
+                    del st.session_state["editing_event_id"]
+                st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
 
-                    # Clear cache and reload data
-                    st.cache_data.clear()
-                    if "data" in st.session_state:
-                        del st.session_state["data"]
-                    if "editing_event_id" in st.session_state:
-                        del st.session_state["editing_event_id"]
-
-                    # Reset map and editing state
-                    keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
-                    for k in keys_to_reset:
-                        if k in st.session_state:
-                            del st.session_state[k]
-
-                    st.success(f"✅ Switched to: **{title}** ({event_count} memories)")
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Failed to load {json_name}: {e}")
-
+                st.success(f"Switched to **{title}** ({event_count} memories)")
+                st.rerun()
 else:
-    st.sidebar.info("No journey files found. Create one by adding memories!")
-
-st.sidebar.markdown("**Journey Operations**")
-# st.sidebar.markdown("<br>", unsafe_allow_html=True)  # Optional spacing
-
+    st.sidebar.info("No journeys found in storage.")
+    
 # ==================== CREATE NEW JOURNEY ====================
 #st.sidebar.markdown("---")
 with st.sidebar.expander("✨ Create New Journey", expanded=False):
