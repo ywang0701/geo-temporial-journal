@@ -1532,8 +1532,120 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
                             st.button("❌ Cancel", type="secondary", use_container_width=True)
         else:
             st.warning("Please enter a new journey name.")
-# ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
-#st.sidebar.markdown("---")
+# # ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
+# #st.sidebar.markdown("---")
+# with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
+#     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
+#
+#     uploaded_file = st.file_uploader(
+#         "Select a backup JSON file to restore",
+#         type=["json"],
+#         key="json_restore_uploader"
+#     )
+#
+#     if uploaded_file is not None:
+#         try:
+#             # Read and validate uploaded JSON
+#             uploaded_bytes = uploaded_file.read()
+#             uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
+#
+#             if not all(key in uploaded_data for key in ["autobiography", "events"]):
+#                 st.error("Invalid backup: missing 'autobiography' or 'events' section.")
+#             elif not isinstance(uploaded_data["events"], list):
+#                 st.error("Invalid backup: 'events' must be a list.")
+#             else:
+#                 title = uploaded_data["autobiography"].get("title", "Untitled Journey")
+#                 event_count = len(uploaded_data["events"])
+#                 st.success(f"Valid backup: **{uploaded_file.name}** ({event_count} memories)")
+#                 #st.success(f"Valid backup: **{title}** ({event_count} memories)")
+#
+#                 st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{uploaded_file.name}**")
+#                 # st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{JSON_FILE.name}**")
+#
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
+#                         # 1. Overwrite the current JSON file
+#                         #JSON_FILE.write_bytes(uploaded_bytes)
+#                         save_path = JSON_FILE.parent / uploaded_file.name
+#                         save_path.write_bytes(uploaded_bytes)
+#
+#                         # 2. Update current journey path
+#                         #st.session_state.current_json_path = JSON_FILE
+#                         st.session_state.current_json_path = uploaded_file
+#
+#                         # 3. Clear cache and reload data properly
+#                         load_data_from_file.clear()  # This clears the @st.cache_data
+#                         st.session_state.data = load_data_from_file(save_path)
+#
+#                         # 3.5 Assign the active json
+#                         st.session_state.selected_json_file = uploaded_file.name
+#
+#                         # 4. Force full refresh
+#                         st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
+#                         if "map_refresh_key" in st.session_state:
+#                             st.session_state.map_refresh_key += 1
+#
+#                         # 5. Reset map view
+#                         for key in ["map_center", "map_zoom"]:
+#                             if key in st.session_state:
+#                                 del st.session_state[key]
+#
+#                         # 6. Clear editing state
+#                         if "editing_event_id" in st.session_state:
+#                             del st.session_state.editing_event_id
+#
+#                         # st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
+#                         st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{uploaded_file}**")
+#                         st.rerun()
+#
+#                 with col2:
+#                     if st.button("❌ Cancel", type="secondary", use_container_width=True):
+#                         st.info("Restore cancelled.")
+#
+#             # ==================== TEMPORARY REFRESH BANNER AFTER RESTORE ====================
+#             if st.session_state.get("refresh_banner", False):
+#                 start_time = st.session_state.get("banner_start_time", time.time())
+#                 elapsed = time.time() - start_time
+#
+#                 if elapsed < 5:  # Show for 5 seconds
+#                     st.markdown(
+#                         """
+#                         <div style="
+#                             position: fixed;
+#                             top: 100px;
+#                             left: 50%;
+#                             transform: translateX(-50%);
+#                             background: #ff4b4b;
+#                             color: white;
+#                             padding: 16px 32px;
+#                             border-radius: 12px;
+#                             font-size: 18px;
+#                             font-weight: bold;
+#                             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+#                             z-index: 10000;
+#                             text-align: center;
+#                         ">
+#                             🔄 Please refresh the webpage to see the updated journey
+#                         </div>
+#                         """,
+#                         unsafe_allow_html=True
+#                     )
+#                     # Force rerun to update timer
+#                     time.sleep(0.1)
+#                     st.rerun()
+#                 else:
+#                     # Time's up → remove banner
+#                     st.session_state.refresh_banner = False
+#                     if "banner_start_time" in st.session_state:
+#                         del st.session_state.banner_start_time
+#                     st.rerun()
+#         except json.JSONDecodeError:
+#             st.error("Invalid JSON file — could not parse.")
+#         except Exception as e:
+#             st.error(f"Error: {e}")
+
+# ==================== UPLOAD & RESTORE JSON (GCS COMPATIBLE) ====================
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
 
@@ -1545,7 +1657,6 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
 
     if uploaded_file is not None:
         try:
-            # Read and validate uploaded JSON
             uploaded_bytes = uploaded_file.read()
             uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
 
@@ -1554,96 +1665,52 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
             elif not isinstance(uploaded_data["events"], list):
                 st.error("Invalid backup: 'events' must be a list.")
             else:
-                title = uploaded_data["autobiography"].get("title", "Untitled Journey")
+                title = uploaded_data["autobiography"].get("title", uploaded_file.name.replace(".json", ""))
                 event_count = len(uploaded_data["events"])
-                st.success(f"Valid backup: **{uploaded_file.name}** ({event_count} memories)")
-                #st.success(f"Valid backup: **{title}** ({event_count} memories)")
+                st.success(f"Valid backup: **{uploaded_file.name}** — {title} ({event_count} memories)")
 
-                st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{uploaded_file.name}**")
-                # st.warning(f"⚠️ This will **replace all data** in the current journey:\n\n**{JSON_FILE.name}**")
+                st.warning("⚠️ This will **replace all data** in the current journey.")
 
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
-                        # 1. Overwrite the current JSON file
-                        #JSON_FILE.write_bytes(uploaded_bytes)
-                        save_path = JSON_FILE.parent / uploaded_file.name
-                        save_path.write_bytes(uploaded_bytes)
+                        try:
+                            # Upload directly to GCS under journeys/ with original name (or cleaned)
+                            restore_filename = uploaded_file.name
+                            blob_name = get_json_path(restore_filename)
 
-                        # 2. Update current journey path
-                        #st.session_state.current_json_path = JSON_FILE
-                        st.session_state.current_json_path = uploaded_file
+                            if IS_CLOUD:
+                                upload_to_gcs(uploaded_bytes, blob_name, "application/json")
+                                st.success(f"✅ Restored **{title}** to cloud storage!")
+                            else:
+                                (BASE_DIR / restore_filename).write_bytes(uploaded_bytes)
+                                st.success(f"✅ Restored **{title}** locally!")
 
-                        # 3. Clear cache and reload data properly
-                        load_data_from_file.clear()  # This clears the @st.cache_data
-                        st.session_state.data = load_data_from_file(save_path)
+                            # Switch to the restored journey
+                            st.session_state.selected_json_file = restore_filename
 
-                        # 3.5 Assign the active json
-                        st.session_state.selected_json_file = uploaded_file.name
+                            # Full reload
+                            st.cache_data.clear()
+                            if "data" in st.session_state:
+                                del st.session_state["data"]
+                            st.session_state.force_map_refresh += 1
 
-                        # 4. Force full refresh
-                        st.session_state.force_map_refresh = st.session_state.get("force_map_refresh", 0) + 1
-                        if "map_refresh_key" in st.session_state:
-                            st.session_state.map_refresh_key += 1
+                            st.rerun()
 
-                        # 5. Reset map view
-                        for key in ["map_center", "map_zoom"]:
-                            if key in st.session_state:
-                                del st.session_state[key]
-
-                        # 6. Clear editing state
-                        if "editing_event_id" in st.session_state:
-                            del st.session_state.editing_event_id
-
-                        # st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{title}**")
-                        st.success(f"✅ Journey restored successfully!\n\nNow viewing: **{uploaded_file}**")
-                        st.rerun()
+                        except Exception as e:
+                            st.error(f"Restore failed: {e}")
+                            logger.error(f"Restore error: {e}")
 
                 with col2:
                     if st.button("❌ Cancel", type="secondary", use_container_width=True):
                         st.info("Restore cancelled.")
 
-            # ==================== TEMPORARY REFRESH BANNER AFTER RESTORE ====================
-            if st.session_state.get("refresh_banner", False):
-                start_time = st.session_state.get("banner_start_time", time.time())
-                elapsed = time.time() - start_time
-
-                if elapsed < 5:  # Show for 5 seconds
-                    st.markdown(
-                        """
-                        <div style="
-                            position: fixed;
-                            top: 100px;
-                            left: 50%;
-                            transform: translateX(-50%);
-                            background: #ff4b4b;
-                            color: white;
-                            padding: 16px 32px;
-                            border-radius: 12px;
-                            font-size: 18px;
-                            font-weight: bold;
-                            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-                            z-index: 10000;
-                            text-align: center;
-                        ">
-                            🔄 Please refresh the webpage to see the updated journey
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    # Force rerun to update timer
-                    time.sleep(0.1)
-                    st.rerun()
-                else:
-                    # Time's up → remove banner
-                    st.session_state.refresh_banner = False
-                    if "banner_start_time" in st.session_state:
-                        del st.session_state.banner_start_time
-                    st.rerun()
         except json.JSONDecodeError:
             st.error("Invalid JSON file — could not parse.")
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error reading file: {e}")
+
+
 
 #     # ==================== DELETE JOURNEY FILE ====================
 # with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
