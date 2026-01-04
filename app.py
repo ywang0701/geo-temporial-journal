@@ -455,38 +455,39 @@ def build_popup_html(event):
     photos = event["media"].get("photos", [])
     videos = event["media"].get("videos", [])
 
-    if photos:
-        popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
-        for p in photos:
-            b64 = get_image_base64(p)
-            fn = os.path.basename(p)
-            if b64:
-                dl = f"data:image/jpeg;base64,{b64}"
-                popup += f"""
-                <div style="text-align:center;">
-                    <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
-                         onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
-                    <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-                </div>
-                """
-        popup += "</div>"
-
-    if videos:
-        popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
-        for v in videos:
-            b64 = get_video_base64(v)
-            fn = os.path.basename(v)
-            if b64:
-                dl = f"data:video/mp4;base64,{b64}"
-                popup += f"""
-                <div style="text-align:center;">
-                    <video controls style="max-width:100%;border-radius:8px;">
-                        <source src="{dl}" type="video/mp4">
-                    </video>
-                    <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-                </div>
-                """
-        popup += "</div>"
+    # if photos:
+    #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
+    #     for p in photos:
+    #         b64 = get_image_base64(p)
+    #         fn = os.path.basename(p)
+    #         if b64:
+    #             dl = f"data:image/jpeg;base64,{b64}"
+    #             popup += f"""
+    #             <div style="text-align:center;">
+    #                 <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
+    #                      onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
+    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+    #             </div>
+    #             """
+    #     popup += "</div>"
+    #
+    # if videos:
+    #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
+    #     for v in videos:
+    #         b64 = get_video_base64(v)
+    #         fn = os.path.basename(v)
+    #         if b64:
+    #             dl = f"data:video/mp4;base64,{b64}"
+    #             popup += f"""
+    #             <div style="text-align:center;">
+    #                 <video controls style="max-width:100%;border-radius:8px;">
+    #                     <source src="{dl}" type="video/mp4">
+    #                 </video>
+    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+    #             </div>
+    #             """
+    #     popup += "</div>"
+    popup += f"<p><em>{len(photos)} photo(s), {len(videos)} video(s)</em></p>"
 
     if not photos and not videos:
         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
