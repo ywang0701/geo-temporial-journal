@@ -933,6 +933,52 @@ if st.session_state.editing_event_id:
             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
                                           key=f"add_vid_{event['id']}")
 
+            # if st.form_submit_button("💾 Save Changes", type="primary"):
+            #     event["location"]["latitude"] = new_lat
+            #     event["location"]["longitude"] = new_lon
+            #     event["title"] = new_title
+            #     event["date"] = new_date.strftime("%Y-%m-%d")
+            #     event["location"]["name"] = new_loc
+            #     event["description"] = new_desc
+            #
+            #     for up in add_photos or []:
+            #         fname = f"{int(time.time())}_{up.name}"
+            #         # path = UPLOADS_PHOTOS / fname
+            #         # path.write_bytes(up.getbuffer())
+            #         # event["media"]["photos"].append(str(path))
+            #         file_bytes = up.getbuffer()
+            #         #if os.getenv("K_SERVICE1"):
+            #         if IS_CLOUD:
+            #             event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+            #         else:
+            #             path = UPLOADS_PHOTOS / fname
+            #             path.write_bytes(file_bytes)
+            #             event["media"]["photos"].append(str(path))
+            #
+            #     for up in add_videos or []:
+            #         fname = f"{int(time.time())}_{up.name}"
+            #         # path = UPLOADS_VIDEOS / fname
+            #         # path.write_bytes(up.getbuffer())
+            #         # event["media"]["videos"].append(str(path))
+            #         file_bytes = up.getbuffer()
+            #         #if os.getenv("K_SERVICE1"):
+            #         if IS_CLOUD:
+            #             event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+            #         else:
+            #             path = UPLOADS_VIDEOS / fname
+            #             path.write_bytes(file_bytes)
+            #             event["media"]["videos"].append(str(path))
+            #
+            #
+            #
+            #
+            #     # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+            #     save_data_to_storage(st.session_state.data)
+            #     st.session_state.force_map_refresh += 1
+            #     st.session_state.editing_event_id = None
+            #     st.success("Changes saved!")
+            #     st.rerun()
+
             if st.form_submit_button("💾 Save Changes", type="primary"):
                 event["location"]["latitude"] = new_lat
                 event["location"]["longitude"] = new_lon
@@ -941,38 +987,35 @@ if st.session_state.editing_event_id:
                 event["location"]["name"] = new_loc
                 event["description"] = new_desc
 
-                for up in add_photos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_PHOTOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # event["media"]["photos"].append(str(path))
-                    file_bytes = up.getbuffer()
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_PHOTOS / fname
-                        path.write_bytes(file_bytes)
-                        event["media"]["photos"].append(str(path))
+                # === FIXED: PROCESS PHOTOS ONLY ON SUBMIT ===
+                if add_photos:  # Only if files were uploaded
+                    for up in add_photos:
+                        if up is not None:  # Safety check
+                            fname = f"{int(time.time())}_{up.name}"
+                            file_bytes = up.getvalue()  # Use .getvalue() — safer than .getbuffer()
+                            if IS_CLOUD:
+                                gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                                event["media"]["photos"].append(gcs_url)
+                            else:
+                                path = UPLOADS_PHOTOS / fname
+                                path.write_bytes(file_bytes)
+                                event["media"]["photos"].append(str(path))
 
-                for up in add_videos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_VIDEOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # event["media"]["videos"].append(str(path))
-                    file_bytes = up.getbuffer()
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_VIDEOS / fname
-                        path.write_bytes(file_bytes)
-                        event["media"]["videos"].append(str(path))
+                # === FIXED: PROCESS VIDEOS ONLY ON SUBMIT ===
+                if add_videos:
+                    for up in add_videos:
+                        if up is not None:
+                            fname = f"{int(time.time())}_{up.name}"
+                            file_bytes = up.getvalue()
+                            if IS_CLOUD:
+                                gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                                event["media"]["videos"].append(gcs_url)
+                            else:
+                                path = UPLOADS_VIDEOS / fname
+                                path.write_bytes(file_bytes)
+                                event["media"]["videos"].append(str(path))
 
-
-
-
-                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                # Save and refresh
                 save_data_to_storage(st.session_state.data)
                 st.session_state.force_map_refresh += 1
                 st.session_state.editing_event_id = None
