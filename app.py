@@ -214,7 +214,7 @@ def ensure_valid_json():
         save_data_to_storage(st.session_state.data)
 
 
-ensure_valid_json()
+#ensure_valid_json()
 
 
 # # ==================== CACHED & SAFE DATA LOADING ====================
@@ -287,7 +287,7 @@ if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
-data = st.session_state.data
+#data = st.session_state.data
 
 # List journeys
 def get_local_json_files():
@@ -297,6 +297,10 @@ def get_local_json_files():
         return [os.path.basename(b) for b in blobs]
     else:
         return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
+
+ensure_valid_json()
+
+data = st.session_state.data
 
 local_json_files = get_local_json_files()
 
