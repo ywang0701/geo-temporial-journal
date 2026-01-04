@@ -1215,104 +1215,215 @@ with st.sidebar.expander("✨ Create New Journey", expanded=False):
 
 
 
-    # ==================== RENAME JOURNEY ====================
-#st.sidebar.markdown("---")
+#     # ==================== RENAME JOURNEY ====================
+# #st.sidebar.markdown("---")
+# with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
+#     st.write("Change the name of an existing journey. This renames the file and updates the title.")
+#     logger.info(f"json list {local_json_files}")
+#     # Exclude none to force selection
+#     journey_to_rename = st.selectbox(
+#         "Select journey to rename",
+#         options=local_json_files,
+#         index=local_json_files.index(
+#             st.session_state.selected_json_file) if st.session_state.selected_json_file in local_json_files else 0,
+#         help="Choose the journey you want to rename"
+#     )
+#
+#     if journey_to_rename:
+#         current_path = BASE_DIR / journey_to_rename
+#         logger.info(f"Current name: {current_path.name}")
+#         logger.info(f"Current path: {current_path}")
+#         try:
+#             current_data = json.loads(current_path.read_text(encoding="utf-8"))
+#             current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
+#             current_display = " ".join(word.capitalize() for word in current_display.split())
+#             event_count = len(current_data.get("events", []))
+#             st.info(f"**Current:** {current_display} • {event_count} place{'s' if event_count != 1 else ''}")
+#         except:
+#             st.error("Could not preview selected journey.")
+#
+#         new_journey_name = st.text_input(
+#             "New Journey Name*",
+#             value=current_display,  # Pre-fill with current formatted name
+#             placeholder="e.g., Europe Adventure 2025",
+#             help="This will be the new display name and filename"
+#         )
+#
+#         if new_journey_name and new_journey_name != current_display:
+#             # Clean for filename
+#             clean_name = (
+#                 new_journey_name.strip()
+#                 .lower()
+#                 .replace(" ", "-")
+#                 .replace("_", "-")
+#                 .replace("/", "")
+#                 .replace("\\", "")
+#             )
+#             if not clean_name:
+#                 st.error("Invalid name – please enter a valid journey name.")
+#             else:
+#                 new_filename = f"{clean_name}.json"
+#                 new_path = BASE_DIR / new_filename
+#
+#                 if new_path.exists():
+#                     st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+#                 else:
+#                     col_rename, col_cancel = st.columns(2)
+#                     with col_rename:
+#                         if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
+#                             try:
+#                                 # Update title in data
+#                                 current_data["autobiography"]["title"] = new_journey_name
+#                                 current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+#
+#                                 # Write to new file
+#                                 new_path.write_text(
+#                                     json.dumps(current_data, indent=4, ensure_ascii=False),
+#                                     encoding="utf-8"
+#                                 )
+#
+#                                 # If renaming the current active journey, update the active file too
+#                                 is_current = journey_to_rename == st.session_state.selected_json_file
+#                                 logger.info(f"Journey renamed to **{new_journey_name}**")
+#                                 if is_current:
+#                                     save_data_to_storage(st.session_state.data)
+#                                     # todo JSON_FILE.write_text(
+#                                     # todo     json.dumps(current_data, indent=4, ensure_ascii=False),
+#                                     # todo     encoding="utf-8"
+#                                     # todo )
+#                                     st.session_state.selected_json_file = new_filename
+#
+#                                 # todo: Delete old file
+#                                 # current_path.unlink()
+#
+#                                 # Clear cache and reset state
+#                                 st.cache_data.clear()
+#                                 if "data" in st.session_state:
+#                                     del st.session_state["data"]
+#                                 keys_to_reset = ["map_center", "map_zoom", "force_map_refresh", "editing_event_id"]
+#                                 for k in keys_to_reset:
+#                                     if k in st.session_state:
+#                                         del st.session_state[k]
+#
+#                                 st.success(f"✅ Journey renamed to **{new_journey_name}**!")
+#                                 st.rerun()
+#
+#                             except Exception as e:
+#                                 st.error(f"Failed to rename: {e}")
+#
+#                     with col_cancel:
+#                         st.button("❌ Cancel", type="secondary", use_container_width=True)
+
+
+# ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
 with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
     st.write("Change the name of an existing journey. This renames the file and updates the title.")
-    logger.info(f"json list {local_json_files}")
-    # Exclude none to force selection
-    journey_to_rename = st.selectbox(
-        "Select journey to rename",
-        options=local_json_files,
-        index=local_json_files.index(
-            st.session_state.selected_json_file) if st.session_state.selected_json_file in local_json_files else 0,
-        help="Choose the journey you want to rename"
-    )
 
-    if journey_to_rename:
-        current_path = BASE_DIR / journey_to_rename
-        logger.info(f"Current name: {current_path.name}")
-        logger.info(f"Current path: {current_path}")
-        try:
-            current_data = json.loads(current_path.read_text(encoding="utf-8"))
-            current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
-            current_display = " ".join(word.capitalize() for word in current_display.split())
-            event_count = len(current_data.get("events", []))
-            st.info(f"**Current:** {current_display} • {event_count} place{'s' if event_count != 1 else ''}")
-        except:
-            st.error("Could not preview selected journey.")
+    available_journeys = get_local_json_files()
 
-        new_journey_name = st.text_input(
-            "New Journey Name*",
-            value=current_display,  # Pre-fill with current formatted name
-            placeholder="e.g., Europe Adventure 2025",
-            help="This will be the new display name and filename"
+    if not available_journeys:
+        st.info("No journeys available to rename.")
+    else:
+        # Select journey to rename
+        journey_to_rename = st.selectbox(
+            "Select journey to rename",
+            options=available_journeys,
+            index=available_journeys.index(st.session_state.selected_json_file)
+            if st.session_state.selected_json_file in available_journeys else 0,
+            help="Choose the journey you want to rename"
         )
 
-        if new_journey_name and new_journey_name != current_display:
-            # Clean for filename
-            clean_name = (
-                new_journey_name.strip()
-                .lower()
-                .replace(" ", "-")
-                .replace("_", "-")
-                .replace("/", "")
-                .replace("\\", "")
-            )
-            if not clean_name:
-                st.error("Invalid name – please enter a valid journey name.")
+        # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
+        blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
+        try:
+            current_data = load_data_from_file(blob_or_path)
+            current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
+            event_count = len(current_data.get("events", []))
+
+            # Format nice display name
+            current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
+            current_display = " ".join(word.capitalize() for word in current_display.split())
+
+            st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
+        except Exception as e:
+            st.error(f"Could not load journey data: {e}")
+            current_display = journey_to_rename.replace(".json", "")
+            current_title = current_display
+            current_data = None
+
+        # === NOW USE current_display SAFELY ===
+        new_journey_name = st.text_input(
+            "New Journey Name*",
+            value=current_title,  # Pre-fill with actual title, not filename
+            placeholder="e.g., Europe Adventure 2025",
+            help="This will become the new display title and filename"
+        )
+
+        if new_journey_name and new_journey_name.strip():
+            if new_journey_name.strip() == current_title:
+                st.info("New name is the same as current — nothing to do.")
             else:
-                new_filename = f"{clean_name}.json"
-                new_path = BASE_DIR / new_filename
-
-                if new_path.exists():
-                    st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+                # Clean for safe filename
+                clean_name = (
+                    new_journey_name.strip()
+                    .lower()
+                    .replace(" ", "-")
+                    .replace("_", "-")
+                    .replace("/", "")
+                    .replace("\\", "")
+                    .replace(".", "")
+                )
+                if not clean_name:
+                    st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
                 else:
-                    col_rename, col_cancel = st.columns(2)
-                    with col_rename:
-                        if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
-                            try:
-                                # Update title in data
-                                current_data["autobiography"]["title"] = new_journey_name
-                                current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+                    new_filename = f"{clean_name}.json"
+                    new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
 
-                                # Write to new file
-                                new_path.write_text(
-                                    json.dumps(current_data, indent=4, ensure_ascii=False),
-                                    encoding="utf-8"
-                                )
+                    # Check if new filename already exists
+                    if new_filename in available_journeys:
+                        st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+                    else:
+                        col_rename, col_cancel = st.columns(2)
+                        with col_rename:
+                            if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
+                                if current_data is None:
+                                    st.error("Cannot rename: failed to load current journey data.")
+                                else:
+                                    try:
+                                        # Update title in data
+                                        current_data["autobiography"]["title"] = new_journey_name.strip()
+                                        current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
 
-                                # If renaming the current active journey, update the active file too
-                                is_current = journey_to_rename == st.session_state.selected_json_file
-                                logger.info(f"Journey renamed to **{new_journey_name}**")
-                                if is_current:
-                                    save_data_to_storage(st.session_state.data)
-                                    # todo JSON_FILE.write_text(
-                                    # todo     json.dumps(current_data, indent=4, ensure_ascii=False),
-                                    # todo     encoding="utf-8"
-                                    # todo )
-                                    st.session_state.selected_json_file = new_filename
+                                        json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
 
-                                # todo: Delete old file
-                                # current_path.unlink()
+                                        # Save to new location
+                                        if IS_CLOUD:
+                                            upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
+                                            # Delete old blob
+                                            bucket.blob(get_json_path(journey_to_rename)).delete()
+                                            st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
+                                        else:
+                                            (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
+                                            (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
+                                            st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
 
-                                # Clear cache and reset state
-                                st.cache_data.clear()
-                                if "data" in st.session_state:
-                                    del st.session_state["data"]
-                                keys_to_reset = ["map_center", "map_zoom", "force_map_refresh", "editing_event_id"]
-                                for k in keys_to_reset:
-                                    if k in st.session_state:
-                                        del st.session_state[k]
+                                        # If renaming the currently active journey, update session
+                                        if journey_to_rename == st.session_state.selected_json_file:
+                                            st.session_state.selected_json_file = new_filename
+                                            st.cache_data.clear()
+                                            if "data" in st.session_state:
+                                                del st.session_state["data"]
 
-                                st.success(f"✅ Journey renamed to **{new_journey_name}**!")
-                                st.rerun()
+                                        st.rerun()
 
-                            except Exception as e:
-                                st.error(f"Failed to rename: {e}")
+                                    except Exception as e:
+                                        st.error(f"Rename failed: {e}")
+                                        logger.error(f"Rename error: {e}")
 
-                    with col_cancel:
-                        st.button("❌ Cancel", type="secondary", use_container_width=True)
+                        with col_cancel:
+                            st.button("❌ Cancel", type="secondary", use_container_width=True)
+        else:
+            st.warning("Please enter a new journey name.")
 # ==================== UPLOAD & RESTORE JSON (FIXED - USES CORRECT LOAD FUNCTION) ====================
 #st.sidebar.markdown("---")
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
