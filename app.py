@@ -1426,79 +1426,79 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
         except Exception as e:
             st.error(f"Error: {e}")
 
-    # ==================== DELETE JOURNEY FILE ====================
-with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
-    st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
-
-    available_for_deletion1 = [
-        f for f in local_json_files
-        if f != st.session_state.selected_json_file  # Never allow deleting the active one
-    ]
-    logger.info(f"available file_for_deletion '{available_for_deletion1}'")
-    if not available_for_deletion1:
-        st.info("No other journey files available to delete.")
-        logger.info("no other journey files available to delete")
-    else:
-        file_to_delete = st.selectbox(
-            "Select a journey to delete",
-            options=available_for_deletion1,
-            help="Only inactive journeys can be deleted"
-        )
-
-        # Preview what will be deleted
-        preview_path = BASE_DIR / file_to_delete
-        logger.info(f"preview_path *** !!! {preview_path}) ")
-
-        blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete
-
-                                                                          )
-
-        if preview_path.exists():
-            try:
-                preview_data = json.loads(preview_path.read_text(encoding="utf-8"))
-                event_count = len(preview_data.get("events", []))
-                title = preview_data.get("autobiography", {}).get("title", "Untitled")
-                st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
-                logger.info(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
-
-            except:
-                st.write(f"File: `{file_to_delete}` (preview unavailable)")
-
-        col_confirm, col_cancel = st.columns(2)
-
-        with col_confirm:
-            if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
-                try:
-                    # Delete the JSON file
-                    if IS_CLOUD:
-                        #blog_delete = bucket.blob(get_json_path(file_to_delete))
-                        #blob_delete.delete()
-                        st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
-                        pass
-                    else:
-                        preview_path.unlink()
-
-                    # preview_path.unlink()
-
-                    # Also delete all associated media files
-                    for item in preview_data.get("events", []):
-                        for media_type in ["photos", "videos"]:
-                            for path_str in item.get("media", {}).get(media_type, []):
-                                media_path = Path(path_str)
-                                if media_path.exists():
-                                    try:
-                                        media_path.unlink()
-                                    except:
-                                        pass  # Best effort
-
-                    st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to delete: {e}")
-
-        with col_cancel:
-            st.button("Cancel", type="secondary", use_container_width=True)
-
+#     # ==================== DELETE JOURNEY FILE ====================
+# with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
+#     st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
+#
+#     available_for_deletion1 = [
+#         f for f in local_json_files
+#         if f != st.session_state.selected_json_file  # Never allow deleting the active one
+#     ]
+#     logger.info(f"available file_for_deletion '{available_for_deletion1}'")
+#     if not available_for_deletion1:
+#         st.info("No other journey files available to delete.")
+#         logger.info("no other journey files available to delete")
+#     else:
+#         file_to_delete = st.selectbox(
+#             "Select a journey to delete",
+#             options=available_for_deletion1,
+#             help="Only inactive journeys can be deleted"
+#         )
+#
+#         # Preview what will be deleted
+#         preview_path = BASE_DIR / file_to_delete
+#         logger.info(f"preview_path *** !!! {preview_path}) ")
+#
+#         blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete
+#
+#                                                                           )
+#
+#         if preview_path.exists():
+#             try:
+#                 preview_data = json.loads(preview_path.read_text(encoding="utf-8"))
+#                 event_count = len(preview_data.get("events", []))
+#                 title = preview_data.get("autobiography", {}).get("title", "Untitled")
+#                 st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+#                 logger.info(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+#
+#             except:
+#                 st.write(f"File: `{file_to_delete}` (preview unavailable)")
+#
+#         col_confirm, col_cancel = st.columns(2)
+#
+#         with col_confirm:
+#             if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
+#                 try:
+#                     # Delete the JSON file
+#                     if IS_CLOUD:
+#                         #blog_delete = bucket.blob(get_json_path(file_to_delete))
+#                         #blob_delete.delete()
+#                         st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
+#                         pass
+#                     else:
+#                         preview_path.unlink()
+#
+#                     # preview_path.unlink()
+#
+#                     # Also delete all associated media files
+#                     for item in preview_data.get("events", []):
+#                         for media_type in ["photos", "videos"]:
+#                             for path_str in item.get("media", {}).get(media_type, []):
+#                                 media_path = Path(path_str)
+#                                 if media_path.exists():
+#                                     try:
+#                                         media_path.unlink()
+#                                     except:
+#                                         pass  # Best effort
+#
+#                     st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
+#                     st.rerun()
+#                 except Exception as e:
+#                     st.error(f"Failed to delete: {e}")
+#
+#         with col_cancel:
+#             st.button("Cancel", type="secondary", use_container_width=True)
+#
 
 # ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
 with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
