@@ -904,37 +904,64 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
             if not title.strip():
                 st.error("Title required")
             else:
+                # photo_paths = []
+                # for up in photos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_PHOTOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # photo_paths.append(str(path))
+                #     file_bytes = up.getbuffer()
+                #
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_PHOTOS / fname
+                #         path.write_bytes(file_bytes)
+                #         photo_paths.append(str(path))
+                #
+                # video_paths = []
+                # for up in videos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_VIDEOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # video_paths.append(str(path))
+                #     file_bytes = up.getbuffer()
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_VIDEOS / fname
+                #         path.write_bytes(file_bytes)
+                #         video_paths.append(str(path))
+
                 photo_paths = []
                 for up in photos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_PHOTOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # photo_paths.append(str(path))
-                    file_bytes = up.getbuffer()
-
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_PHOTOS / fname
-                        path.write_bytes(file_bytes)
-                        photo_paths.append(str(path))
+                    if up is not None:  # Safety check
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
+                            if not file_bytes:  # Extra safety
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                            photo_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload photo {up.name}: {e}")
 
                 video_paths = []
                 for up in videos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_VIDEOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # video_paths.append(str(path))
-                    file_bytes = up.getbuffer()
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_VIDEOS / fname
-                        path.write_bytes(file_bytes)
-                        video_paths.append(str(path))
-
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                            video_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload video {up.name}: {e}")
 
                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
                 new_event = {
