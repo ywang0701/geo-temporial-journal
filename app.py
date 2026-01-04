@@ -1430,18 +1430,18 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
 with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
     st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
 
-    available_for_deletion = [
+    available_for_deletion1 = [
         f for f in local_json_files
         if f != st.session_state.selected_json_file  # Never allow deleting the active one
     ]
-    logger.info(f"available file_for_deletion '{available_for_deletion}'")
-    if not available_for_deletion:
+    logger.info(f"available file_for_deletion '{available_for_deletion1}'")
+    if not available_for_deletion1:
         st.info("No other journey files available to delete.")
         logger.info("no other journey files available to delete")
     else:
         file_to_delete = st.selectbox(
             "Select a journey to delete",
-            options=available_for_deletion,
+            options=available_for_deletion1,
             help="Only inactive journeys can be deleted"
         )
 
