@@ -1326,63 +1326,6 @@ with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
         else:
             st.warning("Please enter a new journey name.")
 
-# ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
-    st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
-
-    available_journeys = get_local_json_files()
-
-    if not available_journeys:
-        st.info("No journeys available to download.")
-    else:
-        # Dropdown to select which journey to download
-        journey_to_download = st.selectbox(
-            "Choose a journey to backup",
-            options=available_journeys,
-            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
-            help="All journeys are listed, including the current one"
-        )
-
-        # Load the selected journey data safely
-        try:
-            blob_or_path = get_json_path(journey_to_download) if IS_CLOUD else str(BASE_DIR / journey_to_download)
-            if IS_CLOUD:
-                json_bytes = download_from_gcs(get_json_path(journey_to_download))
-            else:
-                json_bytes = Path(blob_or_path).read_bytes()
-
-            # Load metadata for nice display
-            temp_data = json.loads(json_bytes.decode("utf-8"))
-            title = temp_data.get("autobiography", {}).get("title", journey_to_download.replace(".json", ""))
-            title_display = " ".join(word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
-            event_count = len(temp_data.get("events", []))
-
-            # Show info
-            is_current = journey_to_download == st.session_state.selected_json_file
-            current_label = " (current)" if is_current else ""
-            st.markdown(f"**{title_display}{current_label}**")
-            st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} • File: `{journey_to_download}`")
-
-            # Generate timestamped filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-            base_name = journey_to_download.replace(".json", "")
-            backup_filename = f"{base_name}_backup_{timestamp}.json"
-
-            # Download button
-            st.download_button(
-                label="📥 Download Backup Now",
-                data=json_bytes,
-                file_name=backup_filename,
-                mime="application/json",
-                use_container_width=True,
-                key=f"download_backup_{journey_to_download}"
-            )
-
-        except Exception as e:
-            st.error("Could not load journey data for download.")
-            logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
-
-
 # ==================== UPLOAD & RESTORE JSON (GCS COMPATIBLE) ====================
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
@@ -1552,6 +1495,62 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 #         st.sidebar.caption("Downloads your current journey as a JSON backup.")
 #     except Exception as e:
 #         st.sidebar.error(f"Backup failed (local): {e}")
+
+# ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
+with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
+    st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
+
+    available_journeys = get_local_json_files()
+
+    if not available_journeys:
+        st.info("No journeys available to download.")
+    else:
+        # Dropdown to select which journey to download
+        journey_to_download = st.selectbox(
+            "Choose a journey to backup",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            help="All journeys are listed, including the current one"
+        )
+
+        # Load the selected journey data safely
+        try:
+            blob_or_path = get_json_path(journey_to_download) if IS_CLOUD else str(BASE_DIR / journey_to_download)
+            if IS_CLOUD:
+                json_bytes = download_from_gcs(get_json_path(journey_to_download))
+            else:
+                json_bytes = Path(blob_or_path).read_bytes()
+
+            # Load metadata for nice display
+            temp_data = json.loads(json_bytes.decode("utf-8"))
+            title = temp_data.get("autobiography", {}).get("title", journey_to_download.replace(".json", ""))
+            title_display = " ".join(word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
+            event_count = len(temp_data.get("events", []))
+
+            # Show info
+            is_current = journey_to_download == st.session_state.selected_json_file
+            current_label = " (current)" if is_current else ""
+            st.markdown(f"**{title_display}{current_label}**")
+            st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} • File: `{journey_to_download}`")
+
+            # Generate timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            base_name = journey_to_download.replace(".json", "")
+            backup_filename = f"{base_name}_backup_{timestamp}.json"
+
+            # Download button
+            st.download_button(
+                label="📥 Download Backup Now",
+                data=json_bytes,
+                file_name=backup_filename,
+                mime="application/json",
+                use_container_width=True,
+                key=f"download_backup_{journey_to_download}"
+            )
+
+        except Exception as e:
+            st.error("Could not load journey data for download.")
+            logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
