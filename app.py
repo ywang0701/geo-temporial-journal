@@ -81,25 +81,27 @@ else:
     st.sidebar.info("🖥️ Running locally (using filesystem)")
     # Your local fallback code (UPLOADS_PHOTOS, etc.)
 
+#if IS_CLOUD:
+
+def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_string(file_bytes, content_type=content_type)
+    return f"gs://{BUCKET_NAME}/{destination_blob_name}"
+
+def download_from_gcs(blob_name):
+    blob = bucket.blob(blob_name)
+    return blob.download_as_bytes()
+
+
+def list_journey_blobs():
+    return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
+
+
+def get_json_path(json_name):
+    return f"{JOURNEYS_FOLDER}/{json_name}"
+
 if IS_CLOUD:
-
-    def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
-        blob = bucket.blob(destination_blob_name)
-        blob.upload_from_string(file_bytes, content_type=content_type)
-        return f"gs://{BUCKET_NAME}/{destination_blob_name}"
-
-    def download_from_gcs(blob_name):
-        blob = bucket.blob(blob_name)
-        return blob.download_as_bytes()
-
-
-    def list_journey_blobs():
-        return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
-
-
-    def get_json_path(json_name):
-        return f"{JOURNEYS_FOLDER}/{json_name}"
-
+    pass
 else:
     # Local development fallback
     UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
@@ -162,7 +164,7 @@ args = parser.parse_args()
 JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
-st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
+# st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
 
 
 # ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
@@ -1384,40 +1386,96 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
 
-# ==================== BACKUP / DOWNLOAD (WORKS ON CLOUD + LOCAL) ====================
-st.sidebar.markdown("---")
+# # ==================== BACKUP / DOWNLOAD (WORKS ON CLOUD + LOCAL) ====================
+#
+# if IS_CLOUD:
+#     # Fetch current journey data from GCS
+#     try:
+#         current_blob_name = get_json_path(st.session_state.selected_json_file)
+#         json_bytes = download_from_gcs(current_blob_name)
+#
+#         st.sidebar.download_button(
+#             label="💾 Backup Current Journey",
+#             data=json_bytes,
+#             file_name=f"{st.session_state.selected_json_file.replace('.json', '')}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+#             mime="application/json",
+#             use_container_width=True
+#         )
+#         st.sidebar.caption("Downloads your current journey as a JSON backup.")
+#     except Exception as e:
+#         st.sidebar.error(f"Failed to prepare backup: {e}")
+#         logger.error(f"Backup download failed: {e}")
+# else:
+#     # Local fallback — safe because files are writable locally
+#     try:
+#         with open(JSON_FILE, "rb") as f:
+#             st.sidebar.download_button(
+#                 label="💾 Backup Current Journey",
+#                 data=f,
+#                 file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+#                 mime="application/json",
+#                 use_container_width=True
+#             )
+#         st.sidebar.caption("Downloads your current journey as a JSON backup.")
+#     except Exception as e:
+#         st.sidebar.error(f"Backup failed (local): {e}")
 
-if IS_CLOUD:
-    # Fetch current journey data from GCS
-    try:
-        current_blob_name = get_json_path(st.session_state.selected_json_file)
-        json_bytes = download_from_gcs(current_blob_name)
+# ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
+with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
+    st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
 
-        st.sidebar.download_button(
-            label="💾 Backup Current Journey",
-            data=json_bytes,
-            file_name=f"{st.session_state.selected_json_file.replace('.json', '')}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-            mime="application/json",
-            use_container_width=True
+    available_journeys = get_local_json_files()
+
+    if not available_journeys:
+        st.info("No journeys available to download.")
+    else:
+        # Dropdown to select which journey to download
+        journey_to_download = st.selectbox(
+            "Choose a journey to backup",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            help="All journeys are listed, including the current one"
         )
-        st.sidebar.caption("Downloads your current journey as a JSON backup.")
-    except Exception as e:
-        st.sidebar.error(f"Failed to prepare backup: {e}")
-        logger.error(f"Backup download failed: {e}")
-else:
-    # Local fallback — safe because files are writable locally
-    try:
-        with open(JSON_FILE, "rb") as f:
-            st.sidebar.download_button(
-                label="💾 Backup Current Journey",
-                data=f,
-                file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+
+        # Load the selected journey data safely
+        try:
+            blob_or_path = get_json_path(journey_to_download) if IS_CLOUD else str(BASE_DIR / journey_to_download)
+            if IS_CLOUD:
+                json_bytes = download_from_gcs(get_json_path(journey_to_download))
+            else:
+                json_bytes = Path(blob_or_path).read_bytes()
+
+            # Load metadata for nice display
+            temp_data = json.loads(json_bytes.decode("utf-8"))
+            title = temp_data.get("autobiography", {}).get("title", journey_to_download.replace(".json", ""))
+            title_display = " ".join(word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
+            event_count = len(temp_data.get("events", []))
+
+            # Show info
+            is_current = journey_to_download == st.session_state.selected_json_file
+            current_label = " (current)" if is_current else ""
+            st.markdown(f"**{title_display}{current_label}**")
+            st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} • File: `{journey_to_download}`")
+
+            # Generate timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            base_name = journey_to_download.replace(".json", "")
+            backup_filename = f"{base_name}_backup_{timestamp}.json"
+
+            # Download button
+            st.download_button(
+                label="📥 Download Backup Now",
+                data=json_bytes,
+                file_name=backup_filename,
                 mime="application/json",
-                use_container_width=True
+                use_container_width=True,
+                key=f"download_backup_{journey_to_download}"
             )
-        st.sidebar.caption("Downloads your current journey as a JSON backup.")
-    except Exception as e:
-        st.sidebar.error(f"Backup failed (local): {e}")
+
+        except Exception as e:
+            st.error("Could not load journey data for download.")
+            logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
+
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
@@ -1455,5 +1513,7 @@ clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" o
 if clean_mode != st.session_state.app_mode:
     st.session_state.app_mode = clean_mode
     st.rerun()
+
+st.sidebar.markdown("---")
 
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
