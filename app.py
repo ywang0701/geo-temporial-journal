@@ -1064,34 +1064,69 @@ if st.session_state.editing_event_id:
                 #         path = UPLOADS_VIDEOS / fname
                 #         path.write_bytes(file_bytes)
                 #         event["media"]["videos"].append(str(path))
+                #
+                # for up in photos or []:
+                #     if up is not None:  # Safety check
+                #         fname = f"{int(time.time())}_{up.name}"
+                #         try:
+                #             file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
+                #             if not file_bytes:  # Extra safety
+                #                 st.warning(f"Empty file skipped: {up.name}")
+                #                 continue
+                #             gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                #             photo_paths.append(gcs_url)
+                #         except Exception as e:
+                #             st.error(f"Failed to upload photo {up.name}: {e}")
+                #
+                # video_paths = []
+                # for up in videos or []:
+                #     if up is not None:
+                #         fname = f"{int(time.time())}_{up.name}"
+                #         try:
+                #             file_bytes = up.getvalue()
+                #             if not file_bytes:
+                #                 st.warning(f"Empty file skipped: {up.name}")
+                #                 continue
+                #             gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                #             video_paths.append(gcs_url)
+                #         except Exception as e:
+                #             st.error(f"Failed to upload video {up.name}: {e}")
 
-                for up in photos or []:
-                    if up is not None:  # Safety check
-                        fname = f"{int(time.time())}_{up.name}"
-                        try:
-                            file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
-                            if not file_bytes:  # Extra safety
-                                st.warning(f"Empty file skipped: {up.name}")
-                                continue
-                            gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-                            photo_paths.append(gcs_url)
-                        except Exception as e:
-                            st.error(f"Failed to upload photo {up.name}: {e}")
-
-                video_paths = []
-                for up in videos or []:
+                # --- Upload new photos (FIXED) ---
+                for up in add_photos or []:
                     if up is not None:
                         fname = f"{int(time.time())}_{up.name}"
                         try:
                             file_bytes = up.getvalue()
                             if not file_bytes:
-                                st.warning(f"Empty file skipped: {up.name}")
                                 continue
-                            gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-                            video_paths.append(gcs_url)
+                            if IS_CLOUD:
+                                url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                            else:
+                                local_path = UPLOADS_PHOTOS / fname
+                                local_path.write_bytes(file_bytes)
+                                url = str(local_path)
+                            event["media"].setdefault("photos", []).append(url)
+                        except Exception as e:
+                            st.error(f"Failed to upload photo {up.name}: {e}")
+
+                # --- Upload new videos (FIXED) ---
+                for up in add_videos or []:
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                continue
+                            if IS_CLOUD:
+                                url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                            else:
+                                local_path = UPLOADS_VIDEOS / fname
+                                local_path.write_bytes(file_bytes)
+                                url = str(local_path)
+                            event["media"].setdefault("videos", []).append(url)
                         except Exception as e:
                             st.error(f"Failed to upload video {up.name}: {e}")
-
 
                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
                 save_data_to_storage(st.session_state.data)
