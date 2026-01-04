@@ -1449,6 +1449,10 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         preview_path = BASE_DIR / file_to_delete
         logger.info(f"preview_path *** !!! {preview_path}) ")
 
+        blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete
+
+                                                                          )
+
         if preview_path.exists():
             try:
                 preview_data = json.loads(preview_path.read_text(encoding="utf-8"))
@@ -1466,15 +1470,15 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
             if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
                 try:
                     # Delete the JSON file
-                    # if IS_CLOUD:
-                    #     #blog_delete = bucket.blob(get_json_path(file_to_delete))
-                    #     #blob_delete.delete()
-                    #     st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
-                    #     pass
-                    # else:
-                    #     preview_path.unlink()
+                    if IS_CLOUD:
+                        #blog_delete = bucket.blob(get_json_path(file_to_delete))
+                        #blob_delete.delete()
+                        st.success(f"Deleted JSON blob: journeys/{file_to_delete}")
+                        pass
+                    else:
+                        preview_path.unlink()
 
-                    preview_path.unlink()
+                    # preview_path.unlink()
 
                     # Also delete all associated media files
                     for item in preview_data.get("events", []):
@@ -1496,6 +1500,76 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
             st.button("Cancel", type="secondary", use_container_width=True)
 
 
+# ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
+with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
+    st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
+
+    # Get current list of journeys (from GCS or local)
+    available_journeys = get_local_json_files()
+    available_for_deletion = [
+        f for f in available_journeys
+        if f != st.session_state.selected_json_file
+    ]
+
+    if not available_for_deletion:
+        st.info("No other journey files available to delete.")
+    else:
+        file_to_delete = st.selectbox(
+            "Select a journey to delete",
+            options=available_for_deletion,
+            help="Only inactive journeys can be deleted"
+        )
+
+        # Load preview data
+        blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete)
+        try:
+            preview_data = load_data_from_file(blob_or_path)
+            event_count = len(preview_data.get("events", []))
+            title = preview_data.get("autobiography", {}).get("title", file_to_delete.replace(".json", ""))
+            st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+        except:
+            st.write(f"File: `{file_to_delete}` (preview unavailable)")
+
+        col_confirm, col_cancel = st.columns(2)
+
+        with col_confirm:
+            if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
+                try:
+                    # 1. Delete all media files (photos + videos)
+                    for event in preview_data.get("events", []):
+                        for media_type in ["photos", "videos"]:
+                            for media_url in event.get("media", {}).get(media_type, []):
+                                try:
+                                    if media_url.startswith("gs://"):
+                                        # GCS path
+                                        parts = media_url[5:].split("/", 1)
+                                        bucket_name = parts[0]
+                                        blob_path = parts[1]
+                                        storage.Client().bucket(bucket_name).blob(blob_path).delete()
+                                    else:
+                                        # Local path
+                                        Path(media_url).unlink(missing_ok=True)
+                                except Exception as e:
+                                    logger.warning(f"Failed to delete media {media_url}: {e}")
+
+                    # 2. Delete the journey JSON itself
+                    if IS_CLOUD:
+                        blob_name = get_json_path(file_to_delete)
+                        bucket.blob(blob_name).delete()
+                        st.success(f"✅ Journey **{file_to_delete}** deleted permanently from cloud.")
+                    else:
+                        (BASE_DIR / file_to_delete).unlink()
+                        st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
+
+                    # Refresh journey list
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Failed to delete: {e}")
+                    logger.error(f"Delete journey failed: {e}")
+
+        with col_cancel:
+            st.button("Cancel", type="secondary", use_container_width=True)
 # ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
 if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
     with open(JSON_FILE, "rb") as f:
