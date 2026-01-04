@@ -1685,17 +1685,32 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
 
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
-# ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
-if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
-    with open(JSON_FILE, "rb") as f:
-        st.download_button(
-            label="⬇️ Download Backup JSON",
-            data=f,
-            file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-            mime="application/json",
-            use_container_width=True
-        )
+# # ==================== BACKUP / DOWNLOAD (FULL WIDTH) ====================
+# if st.sidebar.button("💾 Backup the current Journey . ", use_container_width=True):
+#     with open(JSON_FILE, "rb") as f:
+#         st.download_button(
+#             label="⬇️ Download Backup JSON",
+#             data=f,
+#             file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+#             mime="application/json",
+#             use_container_width=True
+#         )
+#
 
+# ==================== BACKUP / DOWNLOAD (FIXED FOR CLOUD) ====================
+st.sidebar.markdown("---")  # Optional separator for better UX
+
+# Always show the download button (fixes cloud rerun issue)
+with open(JSON_FILE, "rb") as f:
+    st.sidebar.download_button(
+        label="💾 Backup Current Journey",
+        data=f,
+        file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+st.sidebar.caption("Downloads a copy of your current journey data.")
 
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
