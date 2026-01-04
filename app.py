@@ -438,6 +438,63 @@ def get_color_by_year(d):
         return "red"
 
 
+# # ==================== POPUP ====================
+# def build_popup_html(event):
+#     title = html.escape(event.get('title', 'Untitled'))
+#     desc = html.escape(event.get('description', '') or 'No description')
+#     loc = html.escape(event['location']['name'])
+#
+#     popup = f"""
+#     <div style="width:380px;max-height:550px;overflow-y:auto;padding:8px;font-family:sans-serif;">
+#         <h3 style="text-align:center;margin:0 0 8px 0;">{title}</h3>
+#         <p style="text-align:center;color:#555;margin:0 0 10px 0;">{event['date']} • {loc}</p>
+#         <p style="line-height:1.4;margin-bottom:15px;">{desc}</p>
+#         <hr style="margin:15px 0;">
+#     """
+#
+#     photos = event["media"].get("photos", [])
+#     videos = event["media"].get("videos", [])
+#
+#     # if photos:
+#     #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
+#     #     for p in photos:
+#     #         b64 = get_image_base64(p)
+#     #         fn = os.path.basename(p)
+#     #         if b64:
+#     #             dl = f"data:image/jpeg;base64,{b64}"
+#     #             popup += f"""
+#     #             <div style="text-align:center;">
+#     #                 <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
+#     #                      onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
+#     #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+#     #             </div>
+#     #             """
+#     #     popup += "</div>"
+#     #
+#     # if videos:
+#     #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
+#     #     for v in videos:
+#     #         b64 = get_video_base64(v)
+#     #         fn = os.path.basename(v)
+#     #         if b64:
+#     #             dl = f"data:video/mp4;base64,{b64}"
+#     #             popup += f"""
+#     #             <div style="text-align:center;">
+#     #                 <video controls style="max-width:100%;border-radius:8px;">
+#     #                     <source src="{dl}" type="video/mp4">
+#     #                 </video>
+#     #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+#     #             </div>
+#     #             """
+#     #     popup += "</div>"
+#     popup += f"<p><em>{len(photos)} photo(s), {len(videos)} video(s)</em></p>"
+#
+#     if not photos and not videos:
+#         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
+#
+#     popup += "</div>"
+#     return popup
+
 # ==================== POPUP ====================
 def build_popup_html(event):
     title = html.escape(event.get('title', 'Untitled'))
@@ -455,46 +512,57 @@ def build_popup_html(event):
     photos = event["media"].get("photos", [])
     videos = event["media"].get("videos", [])
 
-    # if photos:
-    #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
-    #     for p in photos:
-    #         b64 = get_image_base64(p)
-    #         fn = os.path.basename(p)
-    #         if b64:
-    #             dl = f"data:image/jpeg;base64,{b64}"
-    #             popup += f"""
-    #             <div style="text-align:center;">
-    #                 <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
-    #                      onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
-    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-    #             </div>
-    #             """
-    #     popup += "</div>"
-    #
-    # if videos:
-    #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
-    #     for v in videos:
-    #         b64 = get_video_base64(v)
-    #         fn = os.path.basename(v)
-    #         if b64:
-    #             dl = f"data:video/mp4;base64,{b64}"
-    #             popup += f"""
-    #             <div style="text-align:center;">
-    #                 <video controls style="max-width:100%;border-radius:8px;">
-    #                     <source src="{dl}" type="video/mp4">
-    #                 </video>
-    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-    #             </div>
-    #             """
-    #     popup += "</div>"
-    popup += f"<p><em>{len(photos)} photo(s), {len(videos)} video(s)</em></p>"
+    # === PHOTOS ===
+    if photos:
+        popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
+        for p in photos:
+            # Convert gs://journey-journal/... → public HTTPS URL
+            if p.startswith("gs://"):
+                public_url = p.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
+            else:
+                public_url = p  # local fallback (only works locally)
 
+            fn = os.path.basename(p)
+            popup += f"""
+            <div style="text-align:center;">
+                <img src="{public_url}" 
+                     style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
+                     onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;"
+                     loading="lazy">
+                <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
+            </div>
+            """
+        popup += "</div>"
+
+    # === VIDEOS ===
+    if videos:
+        popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;margin-top:8px;'>"
+        for v in videos:
+            if v.startswith("gs://"):
+                public_url = v.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
+            else:
+                public_url = v
+
+            fn = os.path.basename(v)
+            popup += f"""
+            <div style="text-align:center;">
+                <video controls style="max-width:100%;border-radius:8px;" preload="metadata">
+                    <source src="{public_url}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
+            </div>
+            """
+        popup += "</div>"
+
+    # === FALLBACK MESSAGES ===
     if not photos and not videos:
         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
+    else:
+        popup += f"<p style='text-align:center;color:#666;margin-top:12px;'><em>{len(photos)} photo(s) • {len(videos)} video(s)</em></p>"
 
     popup += "</div>"
     return popup
-
 
 # ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
 def create_map():
@@ -836,37 +904,64 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
             if not title.strip():
                 st.error("Title required")
             else:
+                # photo_paths = []
+                # for up in photos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_PHOTOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # photo_paths.append(str(path))
+                #     file_bytes = up.getbuffer()
+                #
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_PHOTOS / fname
+                #         path.write_bytes(file_bytes)
+                #         photo_paths.append(str(path))
+                #
+                # video_paths = []
+                # for up in videos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_VIDEOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # video_paths.append(str(path))
+                #     file_bytes = up.getbuffer()
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_VIDEOS / fname
+                #         path.write_bytes(file_bytes)
+                #         video_paths.append(str(path))
+
                 photo_paths = []
                 for up in photos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_PHOTOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # photo_paths.append(str(path))
-                    file_bytes = up.getbuffer()
-
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_PHOTOS / fname
-                        path.write_bytes(file_bytes)
-                        photo_paths.append(str(path))
+                    if up is not None:  # Safety check
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
+                            if not file_bytes:  # Extra safety
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                            photo_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload photo {up.name}: {e}")
 
                 video_paths = []
                 for up in videos or []:
-                    fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_VIDEOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # video_paths.append(str(path))
-                    file_bytes = up.getbuffer()
-                    #if os.getenv("K_SERVICE1"):
-                    if IS_CLOUD:
-                        video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
-                    else:
-                        path = UPLOADS_VIDEOS / fname
-                        path.write_bytes(file_bytes)
-                        video_paths.append(str(path))
-
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                            video_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload video {up.name}: {e}")
 
                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
                 new_event = {
@@ -934,51 +1029,76 @@ if st.session_state.editing_event_id:
             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
                                           key=f"add_vid_{event['id']}")
 
-            # if st.form_submit_button("💾 Save Changes", type="primary"):
-            #     event["location"]["latitude"] = new_lat
-            #     event["location"]["longitude"] = new_lon
-            #     event["title"] = new_title
-            #     event["date"] = new_date.strftime("%Y-%m-%d")
-            #     event["location"]["name"] = new_loc
-            #     event["description"] = new_desc
-            #
-            #     for up in add_photos or []:
-            #         fname = f"{int(time.time())}_{up.name}"
-            #         # path = UPLOADS_PHOTOS / fname
-            #         # path.write_bytes(up.getbuffer())
-            #         # event["media"]["photos"].append(str(path))
-            #         file_bytes = up.getbuffer()
-            #         #if os.getenv("K_SERVICE1"):
-            #         if IS_CLOUD:
-            #             event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
-            #         else:
-            #             path = UPLOADS_PHOTOS / fname
-            #             path.write_bytes(file_bytes)
-            #             event["media"]["photos"].append(str(path))
-            #
-            #     for up in add_videos or []:
-            #         fname = f"{int(time.time())}_{up.name}"
-            #         # path = UPLOADS_VIDEOS / fname
-            #         # path.write_bytes(up.getbuffer())
-            #         # event["media"]["videos"].append(str(path))
-            #         file_bytes = up.getbuffer()
-            #         #if os.getenv("K_SERVICE1"):
-            #         if IS_CLOUD:
-            #             event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
-            #         else:
-            #             path = UPLOADS_VIDEOS / fname
-            #             path.write_bytes(file_bytes)
-            #             event["media"]["videos"].append(str(path))
-            #
-            #
-            #
-            #
-            #     # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-            #     save_data_to_storage(st.session_state.data)
-            #     st.session_state.force_map_refresh += 1
-            #     st.session_state.editing_event_id = None
-            #     st.success("Changes saved!")
-            #     st.rerun()
+            if st.form_submit_button("💾 Save Changes", type="primary"):
+                event["location"]["latitude"] = new_lat
+                event["location"]["longitude"] = new_lon
+                event["title"] = new_title
+                event["date"] = new_date.strftime("%Y-%m-%d")
+                event["location"]["name"] = new_loc
+                event["description"] = new_desc
+
+                # for up in add_photos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_PHOTOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # event["media"]["photos"].append(str(path))
+                #     file_bytes = up.getbuffer()
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         event["media"]["photos"].append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_PHOTOS / fname
+                #         path.write_bytes(file_bytes)
+                #         event["media"]["photos"].append(str(path))
+                #
+                # for up in add_videos or []:
+                #     fname = f"{int(time.time())}_{up.name}"
+                #     # path = UPLOADS_VIDEOS / fname
+                #     # path.write_bytes(up.getbuffer())
+                #     # event["media"]["videos"].append(str(path))
+                #     file_bytes = up.getbuffer()
+                #     #if os.getenv("K_SERVICE1"):
+                #     if IS_CLOUD:
+                #         event["media"]["videos"].append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                #     else:
+                #         path = UPLOADS_VIDEOS / fname
+                #         path.write_bytes(file_bytes)
+                #         event["media"]["videos"].append(str(path))
+
+                for up in photos or []:
+                    if up is not None:  # Safety check
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
+                            if not file_bytes:  # Extra safety
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                            photo_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload photo {up.name}: {e}")
+
+                video_paths = []
+                for up in videos or []:
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                st.warning(f"Empty file skipped: {up.name}")
+                                continue
+                            gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                            video_paths.append(gcs_url)
+                        except Exception as e:
+                            st.error(f"Failed to upload video {up.name}: {e}")
+
+
+                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                save_data_to_storage(st.session_state.data)
+                st.session_state.force_map_refresh += 1
+                st.session_state.editing_event_id = None
+                st.success("Changes saved!")
+                st.rerun()
 
 
 
