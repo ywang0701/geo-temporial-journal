@@ -1065,6 +1065,7 @@ if st.session_state.editing_event_id:
                 #         path.write_bytes(file_bytes)
                 #         event["media"]["videos"].append(str(path))
 
+                photo_paths = []
                 for up in photos or []:
                     if up is not None:  # Safety check
                         fname = f"{int(time.time())}_{up.name}"
