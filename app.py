@@ -1215,7 +1215,7 @@ else:
             title = " ".join(word.capitalize() for word in title.split())
             count_text = "0 places (load error)"
             has_error = True
-
+        title = json_name
         # Button styling
         if is_current:
             button_label = f"**→ {title}** • {count_text}"
