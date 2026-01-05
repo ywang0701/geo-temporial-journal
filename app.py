@@ -1,12 +1,12 @@
-import select
+#import select
 import streamlit as st
 from streamlit_folium import st_folium
-import streamlit.components.v1 as components
+#import streamlit.components.v1 as components
 import folium
 from folium.plugins import MarkerCluster
 from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
-import os
+#import os
 import sys
 from datetime import datetime, timedelta
 import time
@@ -53,10 +53,9 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = Path(__file__).resolve().parent
 
-BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 
 # === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
-BUCKET_NAME = "journey-journal"
+BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
 PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
@@ -629,7 +628,7 @@ def create_map():
             tooltip="Your life journey →"
         ).add_to(m)
 
-        # Optional: Add a subtle static curved base line (great circle feel)
+        # Optional: Add a subtle static curved baseline (great circle feel)
         folium.PolyLine(
             locations=coords,
             weight=3,
@@ -1182,7 +1181,7 @@ if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = args.file
 
 # Refresh the list of available JSON files
-local_json_files = get_local_json_files()
+# local_json_files = get_local_json_files()
 
 # ==================== MY JOURNEYS (ROBUST PREVIEW) ====================
 st.sidebar.subheader("📍 My Journeys")
@@ -1620,39 +1619,6 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
 
-# # ==================== BACKUP / DOWNLOAD (WORKS ON CLOUD + LOCAL) ====================
-#
-# if IS_CLOUD:
-#     # Fetch current journey data from GCS
-#     try:
-#         current_blob_name = get_json_path(st.session_state.selected_json_file)
-#         json_bytes = download_from_gcs(current_blob_name)
-#
-#         st.sidebar.download_button(
-#             label="💾 Backup Current Journey",
-#             data=json_bytes,
-#             file_name=f"{st.session_state.selected_json_file.replace('.json', '')}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-#             mime="application/json",
-#             use_container_width=True
-#         )
-#         st.sidebar.caption("Downloads your current journey as a JSON backup.")
-#     except Exception as e:
-#         st.sidebar.error(f"Failed to prepare backup: {e}")
-#         logger.error(f"Backup download failed: {e}")
-# else:
-#     # Local fallback — safe because files are writable locally
-#     try:
-#         with open(JSON_FILE, "rb") as f:
-#             st.sidebar.download_button(
-#                 label="💾 Backup Current Journey",
-#                 data=f,
-#                 file_name=f"{JSON_FILE.stem}_backup_{datetime.now().strftime('%Y%m%d')}.json",
-#                 mime="application/json",
-#                 use_container_width=True
-#             )
-#         st.sidebar.caption("Downloads your current journey as a JSON backup.")
-#     except Exception as e:
-#         st.sidebar.error(f"Backup failed (local): {e}")
 
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
@@ -1664,18 +1630,6 @@ with col_label:
     # The padding-top aligns it vertically with the radio buttons
 
 with col_radio:
-#    mode = st.radio(
-#        label="Mode selection (hidden)",           # Hidden real label
-#        options=["View Mode", "Edit Mode"],
-#        index=0 if st.session_state.app_mode == "View Mode" else 1,
-#        horizontal=True,
-#        label_visibility="collapsed",              # Hide the actual label
-#        key="mode_radio"
-#    )
-#    # Update session state when mode changes
-#    if mode != st.session_state.app_mode:
-#        st.session_state.app_mode = mode
-#        st.rerun()
 
     mode = st.sidebar.radio(
         label="App mode",                  # Hidden or visible as needed
