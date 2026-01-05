@@ -1137,9 +1137,9 @@ if st.session_state.editing_event_id:
 
 
 
-        if st.sidebar.button("Cancel Editing"):
-            st.session_state.editing_event_id = None
-            st.rerun()
+            if st.sidebar.button("Cancel Editing"):
+                st.session_state.editing_event_id = None
+                st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 
