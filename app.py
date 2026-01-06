@@ -905,8 +905,8 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
         col_save, col_cancel = st.columns([1, 1])
         with col_save:
             save_clicked = st.form_submit_button("💾 Save Memory")
-        with col_cancel:
-            cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
+        #with col_cancel:
+        #    cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
 
         if save_clicked:
             if not title.strip():
@@ -986,9 +986,13 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                 st.session_state.force_map_refresh += 1
                 st.success("Memory added!")
                 st.rerun()
-
-        if cancel_clicked:
-            st.rerun()
+    # === CANCEL BUTTON — OUTSIDE THE FORM ===
+    if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+        st.session_state.app_mode = "View Mode"
+        st.success("Adding Memory cancelled!")
+        st.rerun()  # Clears the form by removing last_clicked state
+        #if cancel_clicked:
+        #    st.rerun()
 
 # ==================== EDITING EXISTING EVENT ====================
 if st.session_state.editing_event_id:
