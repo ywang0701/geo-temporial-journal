@@ -1647,5 +1647,54 @@ if clean_mode != st.session_state.app_mode:
     st.rerun()
 
 st.sidebar.markdown("---")
-
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
+
+# ==================== API ENDPOINT FOR UPLOADING JOURNEY BACKUP ====================
+import streamlit as st
+from flask import Flask, request, jsonify  # You'll need to install flask if deploying separately
+# But easier: use st.query_params or direct POST handling trick
+
+# Simple API key protection (set your own)
+API_KEY = st.secrets.get("api_key", "your-secret-api-key-here")  # Store in secrets!
+
+# Hidden API handler using query params + file upload simulation
+if st.query_params.get("api") == "upload_journey":
+    api_key = st.query_params.get("key")
+    if api_key != API_KEY:
+        st.error("Unauthorized")
+        st.stop()
+
+    st.title("API: Upload Journey Backup")
+    st.write("POST a JSON file here to restore a journey.")
+
+    uploaded_file = st.file_uploader("Upload journey JSON", type="json", key="api_upload")
+
+    if uploaded_file:
+        try:
+            data = json.load(uploaded_file)
+            required_keys = ["autobiography", "events"]
+            if not all(k in data for k in required_keys):
+                st.error("Invalid journey format")
+            else:
+                # Generate safe filename
+                title = data["autobiography"].get("title", "Untitled").strip()
+                clean_name = "".join(c if c.isalnum() else "-" for c in title.lower())
+                filename = f"{clean_name or 'restored'}-{int(time.time())}.json"
+
+                json_bytes = json.dumps(data, indent=4, ensure_ascii=False).encode("utf-8")
+
+                if IS_CLOUD:
+                    upload_to_gcs(json_bytes, get_json_path(filename), "application/json")
+                else:
+                    (BASE_DIR / filename).write_bytes(json_bytes)
+
+                st.success(f"Journey restored as `{filename}`")
+                st.code(f"gs://{BUCKET_NAME}/{JOURNEYS_FOLDER}/{filename}" if IS_CLOUD else str(BASE_DIR / filename))
+
+        except Exception as e:
+            st.error(f"Failed: {e}")
+
+    st.stop()  # Prevent rest of app from showing
+    # curl -X POST "https://your-app.streamlit.app/?api=upload_journey&key=your-secret-api-key" \
+    #   -F "file=@my_backup.json"
+st.sidebar.markdown("---")
