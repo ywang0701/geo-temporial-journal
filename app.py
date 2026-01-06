@@ -60,8 +60,8 @@ JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
 PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
 
-st.session_state.latitude = 1.00
-st.session_state.longitude = 2.00
+st.session_state.latitude = 1.11
+st.session_state.longitude = 1.11
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
 IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
 
@@ -1009,6 +1009,11 @@ if st.session_state.editing_event_id:
 
         cur_lat = event["location"]["latitude"]
         cur_lon = event["location"]["longitude"]
+        if st.session_state.latitude == 1.11:
+            st.session_state.latitude = cur_lat
+        if st.session_state.longitude== 1.11:
+            st.session_state.longitude = cur_lon
+        st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
         #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
         st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
 
