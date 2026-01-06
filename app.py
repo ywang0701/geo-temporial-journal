@@ -60,6 +60,8 @@ JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
 PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
 
+st.session_state.latitude = 1.00
+st.session_state.longitude = 2.00
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
 IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
 
@@ -109,6 +111,13 @@ else:
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
 #DEFAULT_ACTIVE_JSON="life_events.json"
+if "edit_lat" not in st.session_state:
+    st.session_state.edit_lat = None
+if "edit_lon" not in st.session_state:
+    st.session_state.edit_lon = None
+
+if "default_location" not in st.session_state:
+    st.session_state.default_name= None
 
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
@@ -890,7 +899,7 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                              max_value=None)
         loc_name = st.text_input("Location Name*", default_name)
         description = st.text_area("Description")
-        photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"])
+        photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
         videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
 
         col_save, col_cancel = st.columns([1, 1])
@@ -985,14 +994,29 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
 if st.session_state.editing_event_id:
     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
     if event:
+        if map_data and map_data.get("last_clicked"):
+            click = map_data["last_clicked"]
+            lat, lon = click["lat"], click["lng"]
+            # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+            st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+            #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+            #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+            #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+            st.session_state.latitude = lat
+            st.session_state.longitude = lon
+
         st.sidebar.header(f"✏️ Editing: {event['title']}")
 
         cur_lat = event["location"]["latitude"]
         cur_lon = event["location"]["longitude"]
-        st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+        #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+        st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
 
-        new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-        new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
+        #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
+        #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
+
+        new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
+        new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
 
         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
             st.sidebar.markdown(f"### Current {label}")
@@ -1017,13 +1041,26 @@ if st.session_state.editing_event_id:
                 st.sidebar.info(f"No {label.lower()}")
 
         with st.sidebar.form("edit_form"):
+            if map_data and map_data.get("last_clicked"):
+                click = map_data["last_clicked"]
+                lat, lon = click["lat"], click["lng"]
+                #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+                #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+                st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+                #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+                #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+                #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+                st.session_state.latitude = lat
+                st.session_state.longitude = lon
+                pass
             new_title = st.text_input("Title", event["title"])
             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
                                      min_value=datetime(1920, 1, 1).date(),
                                      max_value=None)
-            new_loc = st.text_input("Location Name", event["location"]["name"])
+            #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
+            new_loc = st.text_input("Location Name", st.session_state.default_name)
             new_desc = st.text_area("Description", event.get("description", ""))
-            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"],
+            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
                                           key=f"add_ph_{event['id']}")
             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
                                           key=f"add_vid_{event['id']}")
@@ -1647,54 +1684,5 @@ if clean_mode != st.session_state.app_mode:
     st.rerun()
 
 st.sidebar.markdown("---")
+
 st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
-
-# ==================== API ENDPOINT FOR UPLOADING JOURNEY BACKUP ====================
-import streamlit as st
-from flask import Flask, request, jsonify  # You'll need to install flask if deploying separately
-# But easier: use st.query_params or direct POST handling trick
-
-# Simple API key protection (set your own)
-API_KEY = st.secrets.get("api_key", "your-secret-api-key-here")  # Store in secrets!
-
-# Hidden API handler using query params + file upload simulation
-if st.query_params.get("api") == "upload_journey":
-    api_key = st.query_params.get("key")
-    if api_key != API_KEY:
-        st.error("Unauthorized")
-        st.stop()
-
-    st.title("API: Upload Journey Backup")
-    st.write("POST a JSON file here to restore a journey.")
-
-    uploaded_file = st.file_uploader("Upload journey JSON", type="json", key="api_upload")
-
-    if uploaded_file:
-        try:
-            data = json.load(uploaded_file)
-            required_keys = ["autobiography", "events"]
-            if not all(k in data for k in required_keys):
-                st.error("Invalid journey format")
-            else:
-                # Generate safe filename
-                title = data["autobiography"].get("title", "Untitled").strip()
-                clean_name = "".join(c if c.isalnum() else "-" for c in title.lower())
-                filename = f"{clean_name or 'restored'}-{int(time.time())}.json"
-
-                json_bytes = json.dumps(data, indent=4, ensure_ascii=False).encode("utf-8")
-
-                if IS_CLOUD:
-                    upload_to_gcs(json_bytes, get_json_path(filename), "application/json")
-                else:
-                    (BASE_DIR / filename).write_bytes(json_bytes)
-
-                st.success(f"Journey restored as `{filename}`")
-                st.code(f"gs://{BUCKET_NAME}/{JOURNEYS_FOLDER}/{filename}" if IS_CLOUD else str(BASE_DIR / filename))
-
-        except Exception as e:
-            st.error(f"Failed: {e}")
-
-    st.stop()  # Prevent rest of app from showing
-    # curl -X POST "https://your-app.streamlit.app/?api=upload_journey&key=your-secret-api-key" \
-    #   -F "file=@my_backup.json"
-st.sidebar.markdown("---")
