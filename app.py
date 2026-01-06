@@ -890,7 +890,7 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                              max_value=None)
         loc_name = st.text_input("Location Name*", default_name)
         description = st.text_area("Description")
-        photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
+        photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"])
         videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
 
         col_save, col_cancel = st.columns([1, 1])
@@ -1023,7 +1023,7 @@ if st.session_state.editing_event_id:
                                      max_value=None)
             new_loc = st.text_input("Location Name", event["location"]["name"])
             new_desc = st.text_area("Description", event.get("description", ""))
-            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
+            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif"],
                                           key=f"add_ph_{event['id']}")
             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
                                           key=f"add_vid_{event['id']}")
