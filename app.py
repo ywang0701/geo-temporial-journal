@@ -831,7 +831,6 @@ css += """
     }
 </style>
 """
-
 st.markdown(css, unsafe_allow_html=True)
 st.set_page_config(
     page_title=f"{display_name} - Map {timeline_info}",
@@ -1156,159 +1155,6 @@ if st.session_state.editing_event_id:
                 st.rerun()
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
-
-st.sidebar.markdown("---")
-# st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
-event_count = len(st.session_state.data.get("events", []))
-place_text = "place" if event_count == 1 else "places"
-
-st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
-
-sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
-for idx, event in enumerate(sorted_events, start=1):
-    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}", expanded=False):
-        st.caption(f"📍 {event['location']['name']}")
-        for p in event["media"].get("photos", [])[:3]:
-            if os.path.exists(p):
-                st.image(p, width=200)
-        for v in event["media"].get("videos", [])[:1]:
-            if os.path.exists(v):
-                st.video(v)
-
-        # Edit and Delete buttons side by side
-        col_edit, col_delete = st.columns([2, 1])
-        with col_edit:
-            if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
-                st.session_state.editing_event_id = event["id"]
-                st.rerun()
-        with col_delete:
-            if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
-                st.session_state.confirm_delete_id = event["id"]
-                st.rerun()
-
-# Confirmation dialog for deletion
-if "confirm_delete_id" in st.session_state:
-    delete_event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.confirm_delete_id),
-                        None)
-    if delete_event:
-        for idx, event in enumerate(sorted_events, start=1):
-            if event["id"] == st.session_state.confirm_delete_id:
-                with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']} (Confirm Delete)", expanded=True):
-                    st.warning("⚠️ Are you sure you want to permanently delete this memory?")
-                    st.write(f"**{event['title']}** • {event['date']} • {event['location']['name']}")
-
-                    col_yes, col_no = st.columns(2)
-                    with col_yes:
-                        if st.button("Yes, delete permanently", type="primary", key=f"confirm_yes_{event['id']}"):
-                            # for p in event["media"].get("photos", []) + event["media"].get("videos", []):
-                            #     if os.path.exists(p):
-                            #         os.remove(p)
-                            # Delete media files (GCS or local)
-                            for p in event["media"].get("photos", []) + event["media"].get("videos", []):
-                                try:
-                                    if p.startswith("gs://"):
-                                        parts = p[5:].split("/", 1)
-                                        bucket_name = parts[0]
-                                        blob_path = parts[1] if len(parts) > 1 else ""
-                                        storage.Client().bucket(bucket_name).blob(blob_path).delete()
-                                    else:
-                                        path = Path(p)
-                                        if path.exists():
-                                            path.unlink()
-                                except Exception:
-                                    pass  # Best-effort deletion
-
-
-                            st.session_state.data["events"] = [e for e in st.session_state.data["events"] if
-                                                               e["id"] != event["id"]]
-                            # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-                            #                     encoding="utf-8")
-                            save_data_to_storage(st.session_state.data)
-                            st.session_state.force_map_refresh += 1
-                            if "confirm_delete_id" in st.session_state:
-                                del st.session_state.confirm_delete_id
-                            st.success("Memory deleted")
-                            st.rerun()
-                    with col_no:
-                        if st.button("No, keep it", key=f"confirm_no_{event['id']}"):
-                            if "confirm_delete_id" in st.session_state:
-                                del st.session_state.confirm_delete_id
-                            st.rerun()
-                break
-
-
-# Optional: last modified
-#if JSON_FILE.exists():
-#    mtime = datetime.fromtimestamp(JSON_FILE.stat().st_mtime)
-#    st.sidebar.caption(f"Last saved: {mtime.strftime('%Y-%m-%d %H:%M')}")
-
-
-## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
-# SAFETY CHECK: Ensure selected_json_file always exists in session state
-if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
-# Optional: Support --file argument to pre-select a different journey on launch
-#if args.file and (BASE_DIR / args.file).exists():
-#    st.session_state.selected_json_file = args.file
-
-# Refresh the list of available JSON files
-# local_json_files = get_local_json_files()
-
-# ==================== MY JOURNEYS (ROBUST PREVIEW) ====================
-st.sidebar.subheader("📍 My Journeys")
-
-local_json_files = get_local_json_files()
-
-if not local_json_files:
-    st.sidebar.info("No journeys found. Create one by adding memories!")
-else:
-    for json_name in sorted(local_json_files):
-        is_current = json_name == st.session_state.selected_json_file
-
-        # Try to load preview data safely
-        try:
-            blob_or_path = get_json_path(json_name) if IS_CLOUD else str(BASE_DIR / json_name)
-            temp_data = load_data_from_file(blob_or_path)  # This auto-creates default if missing
-            event_count = len(temp_data.get("events", []))
-            title = temp_data.get("autobiography", {}).get("title", json_name.replace(".json", ""))
-            title = " ".join(word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
-            count_text = f"{event_count} place{'s' if event_count != 1 else ''}"
-            has_error = False
-        except Exception as e:
-            logger.warning(f"Failed to preview {json_name}: {e}")
-            event_count = 0
-            title = json_name.replace(".json", "").replace("_", " ").replace("-", " ")
-            title = " ".join(word.capitalize() for word in title.split())
-            count_text = "0 places (load error)"
-            has_error = True
-        title = json_name
-        # Button styling
-        if is_current:
-            button_label = f"**→ {title}** • {count_text}"
-            if has_error:
-                button_label += " ⚠️"
-            disabled = True
-        else:
-            button_label = f"{title} • {count_text}"
-            if has_error:
-                button_label += " ⚠️"
-            disabled = False
-
-        if st.sidebar.button(
-            button_label,
-            key=f"journey_switch_{json_name}",
-            disabled=disabled,
-            use_container_width=True
-        ):
-            if not is_current:
-                st.session_state.selected_json_file = json_name
-                st.cache_data.clear()
-                if "data" in st.session_state:
-                    del st.session_state["data"]
-                st.session_state.force_map_refresh += 1
-                st.rerun()
-
 st.sidebar.subheader("✨ Journey Operations")
 # ==================== CREATE NEW JOURNEY ====================
 #st.sidebar.markdown("---")
@@ -1691,7 +1537,13 @@ with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
         with col_cancel:
             st.button("Cancel", type="secondary", use_container_width=True)
 
+# st.sidebar.markdown("---")
+# st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
+event_count = len(st.session_state.data.get("events", []))
+place_text = "memory" if event_count == 1 else "memories"
 
+#st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
+st.sidebar.subheader(f"🗺️ Selected Journey")
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
@@ -1706,6 +1558,7 @@ with col_radio:
     mode = st.sidebar.radio(
         label="App mode",                  # Hidden or visible as needed
         options=["👁️ View Mode", "✏️ Edit Mode"],
+        captions=["Explore Journey", "Add Memories"],
         index=0 if st.session_state.app_mode == "View Mode" else 1,
         horizontal=True,
         label_visibility="collapsed",      # Hide the main label since we have markdown above
@@ -1718,6 +1571,205 @@ if clean_mode != st.session_state.app_mode:
     st.session_state.app_mode = clean_mode
     st.rerun()
 
-st.sidebar.markdown("---")
 
-st.caption("Delete button now placed next to Edit in the memory list • Safe confirmation required")
+st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+
+
+
+
+sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+for idx, event in enumerate(sorted_events, start=1):
+    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}", expanded=False):
+        st.caption(f"📍 {event['location']['name']}")
+        for p in event["media"].get("photos", [])[:3]:
+            if os.path.exists(p):
+                st.image(p, width=200)
+        for v in event["media"].get("videos", [])[:1]:
+            if os.path.exists(v):
+                st.video(v)
+
+        # Edit and Delete buttons side by side
+        col_edit, col_delete = st.columns([2, 1])
+        with col_edit:
+            if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
+                st.session_state.editing_event_id = event["id"]
+                st.rerun()
+        with col_delete:
+            if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
+                st.session_state.confirm_delete_id = event["id"]
+                st.rerun()
+
+# Confirmation dialog for deletion
+if "confirm_delete_id" in st.session_state:
+    delete_event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.confirm_delete_id),
+                        None)
+    if delete_event:
+        for idx, event in enumerate(sorted_events, start=1):
+            if event["id"] == st.session_state.confirm_delete_id:
+                with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']} (Confirm Delete)", expanded=True):
+                    st.warning("⚠️ Are you sure you want to permanently delete this memory?")
+                    st.write(f"**{event['title']}** • {event['date']} • {event['location']['name']}")
+
+                    col_yes, col_no = st.columns(2)
+                    with col_yes:
+                        if st.button("Yes, delete permanently", type="primary", key=f"confirm_yes_{event['id']}"):
+                            # for p in event["media"].get("photos", []) + event["media"].get("videos", []):
+                            #     if os.path.exists(p):
+                            #         os.remove(p)
+                            # Delete media files (GCS or local)
+                            for p in event["media"].get("photos", []) + event["media"].get("videos", []):
+                                try:
+                                    if p.startswith("gs://"):
+                                        parts = p[5:].split("/", 1)
+                                        bucket_name = parts[0]
+                                        blob_path = parts[1] if len(parts) > 1 else ""
+                                        storage.Client().bucket(bucket_name).blob(blob_path).delete()
+                                    else:
+                                        path = Path(p)
+                                        if path.exists():
+                                            path.unlink()
+                                except Exception:
+                                    pass  # Best-effort deletion
+
+
+                            st.session_state.data["events"] = [e for e in st.session_state.data["events"] if
+                                                               e["id"] != event["id"]]
+                            # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                            #                     encoding="utf-8")
+                            save_data_to_storage(st.session_state.data)
+                            st.session_state.force_map_refresh += 1
+                            if "confirm_delete_id" in st.session_state:
+                                del st.session_state.confirm_delete_id
+                            st.success("Memory deleted")
+                            st.rerun()
+                    with col_no:
+                        if st.button("No, keep it", key=f"confirm_no_{event['id']}"):
+                            if "confirm_delete_id" in st.session_state:
+                                del st.session_state.confirm_delete_id
+                            st.rerun()
+                break
+
+
+# Optional: last modified
+#if JSON_FILE.exists():
+#    mtime = datetime.fromtimestamp(JSON_FILE.stat().st_mtime)
+#    st.sidebar.caption(f"Last saved: {mtime.strftime('%Y-%m-%d %H:%M')}")
+
+
+## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
+# SAFETY CHECK: Ensure selected_json_file always exists in session state
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
+
+# Optional: Support --file argument to pre-select a different journey on launch
+#if args.file and (BASE_DIR / args.file).exists():
+#    st.session_state.selected_json_file = args.file
+
+# Refresh the list of available JSON files
+# local_json_files = get_local_json_files()
+
+# ==================== MY JOURNEYS (ROBUST PREVIEW) ====================
+st.sidebar.subheader("📍 My Journeys")
+
+local_json_files = get_local_json_files()
+
+if not local_json_files:
+    st.sidebar.info("No journeys found. Create one by adding memories!")
+else:
+    for json_name in sorted(local_json_files):
+        is_current = json_name == st.session_state.selected_json_file
+
+        # Try to load preview data safely
+        try:
+            blob_or_path = get_json_path(json_name) if IS_CLOUD else str(BASE_DIR / json_name)
+            temp_data = load_data_from_file(blob_or_path)  # This auto-creates default if missing
+            event_count = len(temp_data.get("events", []))
+            title = temp_data.get("autobiography", {}).get("title", json_name.replace(".json", ""))
+            title = " ".join(word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
+            count_text = f"{event_count} place{'s' if event_count != 1 else ''}"
+            has_error = False
+        except Exception as e:
+            logger.warning(f"Failed to preview {json_name}: {e}")
+            event_count = 0
+            title = json_name.replace(".json", "").replace("_", " ").replace("-", " ")
+            title = " ".join(word.capitalize() for word in title.split())
+            count_text = "0 places (load error)"
+            has_error = True
+        title = json_name
+        # Button styling
+        if is_current:
+            button_label = f"**→ {title}** • {count_text}"
+            if has_error:
+                button_label += " ⚠️"
+            disabled = True
+        else:
+            button_label = f"{title} • {count_text}"
+            if has_error:
+                button_label += " ⚠️"
+            disabled = False
+
+        if st.sidebar.button(
+            button_label,
+            key=f"journey_switch_{json_name}",
+            disabled=disabled,
+            use_container_width=True
+        ):
+            if not is_current:
+                st.session_state.selected_json_file = json_name
+                st.cache_data.clear()
+                if "data" in st.session_state:
+                    del st.session_state["data"]
+                st.session_state.force_map_refresh += 1
+                st.rerun()
+
+
+# # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
+# # Create a single row with label and radio buttons
+# col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
+#
+# with col_label:
+#     pass
+#     # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
+#     # The padding-top aligns it vertically with the radio buttons
+#
+# with col_radio:
+#
+#     mode = st.sidebar.radio(
+#         label="App mode",                  # Hidden or visible as needed
+#         options=["👁️ View Mode", "✏️ Edit Mode"],
+#         index=0 if st.session_state.app_mode == "View Mode" else 1,
+#         horizontal=True,
+#         label_visibility="collapsed",      # Hide the main label since we have markdown above
+#         key="mode_radio"
+#     )
+# # Clean the returned value (remove emoji for clean comparison/storage)
+# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
+#
+# if clean_mode != st.session_state.app_mode:
+#     st.session_state.app_mode = clean_mode
+#     st.rerun()
+#
+# st.sidebar.markdown("---")
+# st.sidebar.subheader("🛠️ App Mode")
+#
+# if st.session_state.app_mode == "View Mode":
+#     if st.sidebar.button("✏️ Enter Edit Mode", use_container_width=True, type="primary"):
+#         st.session_state.app_mode = "Edit Mode"
+#         st.rerun()
+# else:
+#     st.sidebar.success("✅ **Edit Mode Active**")
+#     st.sidebar.info("Click map to add • Use list to edit/delete")
+#     if st.sidebar.button("👁️ Exit Edit Mode", use_container_width=True):
+#         st.session_state.app_mode = "View Mode"
+#         st.rerun()
+#
+# # Clean the returned value (remove emoji for clean comparison/storage)
+# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
+#
+#
+# if clean_mode != st.session_state.app_mode:
+#     st.session_state.app_mode = clean_mode
+#     st.rerun()
+
+
+# st.sidebar.markdown("---")
