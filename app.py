@@ -587,10 +587,34 @@ def create_map():
 
     # Add numbered markers
     for idx, e in enumerate(sorted_events, start=1):
+        escaped_desc = html.escape(f"{e['description']}")
+        tooltip_html = f"""
+                <div style="
+                    font-family: sans-serif;
+                    min-width: 200px;
+                    max-width: 300px;   /* Limits width so text wraps */
+                    padding: 8px;
+                    line-height: 1.4;
+                ">
+                    <strong style="font-size: 15px;">{idx}.{e['date']} {html.escape(e['title'])} </strong>
+                    <div style="
+                        font-size: 14px;
+                        color: #333;
+                        font-style: italic;
+                        white-space: normal;   /* Ensures wrapping */
+                        word-wrap: break-word; /* Breaks long words if needed */
+                    ">
+                        {escaped_desc}
+                    </div>
+                </div>
+                """
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
-            tooltip=f"{idx}. {e['title']} ({e['date']})",
+            #tooltip=f"{idx}. {e['title']} ({e['date']})",
+            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
+            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
+            tooltip=folium.Tooltip(tooltip_html, perment=False, sticky=True),
             icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
         ).add_to(cluster)
 
@@ -836,6 +860,7 @@ if data["events"]:
         for idx, (event, dt) in enumerate(zip(sorted_events, dates), start=1):
             position = ((dt - min_date).days / total_span) * 100
             escaped_title = html.escape(event.get('title', 'Untitled'))
+            escaped_desc  = html.escape(event.get('description', 'Description:'))
 
             timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
             timeline_html += f'''
@@ -843,6 +868,7 @@ if data["events"]:
                 <div class="timeline-label">
                     <strong>{idx}.</strong> <span>{event["date"]}</span>
                     <div class="timeline-title">{escaped_title}</div>
+                    <div class="timeline-title">{escaped_desc}</div>
                 </div>
             </div>
             '''
@@ -905,8 +931,8 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
         col_save, col_cancel = st.columns([1, 1])
         with col_save:
             save_clicked = st.form_submit_button("💾 Save Memory")
-        with col_cancel:
-            cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
+        #with col_cancel:
+        #    cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
 
         if save_clicked:
             if not title.strip():
@@ -986,9 +1012,13 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                 st.session_state.force_map_refresh += 1
                 st.success("Memory added!")
                 st.rerun()
-
-        if cancel_clicked:
-            st.rerun()
+    # === CANCEL BUTTON — OUTSIDE THE FORM ===
+    if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+        st.session_state.app_mode = "View Mode"
+        st.success("Adding Memory cancelled!")
+        st.rerun()  # Clears the form by removing last_clicked state
+        #if cancel_clicked:
+        #    st.rerun()
 
 # ==================== EDITING EXISTING EVENT ====================
 if st.session_state.editing_event_id:
