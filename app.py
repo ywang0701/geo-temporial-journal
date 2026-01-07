@@ -1574,12 +1574,9 @@ if clean_mode != st.session_state.app_mode:
 
 st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
 
-
-
-
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
-    with st.sidebar.expander(f"{idx}. {event['date']} — {event['title']}", expanded=False):
+    with st.sidebar.expander(f"🔹{idx}. {event['date']} — {event['title']}", expanded=False):
         st.caption(f"📍 {event['location']['name']}")
         for p in event["media"].get("photos", [])[:3]:
             if os.path.exists(p):
