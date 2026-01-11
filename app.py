@@ -59,6 +59,9 @@ BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
 PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
+MIN_DATE = date(1800, 1, 1)              # ← you can lower to 1850 or 1800 if needed
+MAX_DATE = date(2026,12,30)
+
 
 st.session_state.latitude = 1.11
 st.session_state.longitude = 1.11
@@ -920,8 +923,9 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
     with st.sidebar.form("add_form", clear_on_submit=False):
         title = st.text_input("Title*", "")
         date = st.date_input("Date*", datetime.today(),
-                             min_value=datetime(1930, 1, 1).date(),
-                             max_value=None)
+                             min_value= MIN_DATE,
+                             #min_value=datetime(1930, 1, 1).date(),
+                             max_value=MAX_DATE)
         loc_name = st.text_input("Location Name*", default_name)
         description = st.text_area("Description")
         photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
@@ -1089,8 +1093,9 @@ if st.session_state.editing_event_id:
                 pass
             new_title = st.text_input("Title", event["title"])
             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-                                     min_value=datetime(1920, 1, 1).date(),
-                                     max_value=None)
+                                     #min_value=datetime(1920, 1, 1).date(),
+                                     min_value=MIN_DATE,
+                                     max_value=MAX_DATE)
             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
             new_loc = st.text_input("Location Name", st.session_state.default_name)
             new_desc = st.text_area("Description", event.get("description", ""))
