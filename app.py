@@ -8,7 +8,7 @@ from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
 #import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date  
 import time
 import base64
 import logging
