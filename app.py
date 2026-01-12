@@ -15,8 +15,6 @@ import logging
 from pathlib import Path
 import html
 import argparse
-import copy
-import hashlib
 # === NEW IMPORTS FOR GOOGLE CLOUD STORAGE ===
 import os
 from google.cloud import storage
@@ -414,9 +412,6 @@ if "map_zoom" not in st.session_state:
 if "force_map_refresh" not in st.session_state:
     st.session_state.force_map_refresh = 0
 
-if "map_render_selected_id" not in st.session_state:
-    st.session_state.map_render_selected_id = st.session_state.get("selected_event_id")
-
 
 # ==================== SELECTION / SYNC HELPERS ====================
 def _event_lookup_by_id(event_id: int):
@@ -427,40 +422,15 @@ def _event_lookup_by_id(event_id: int):
     return next((e for e in st.session_state.data.get("events", []) if str(e.get("id")) == target), None)
 
 def select_event(event_id, *, center_map: bool = True, zoom: int = 10):
-    """Select an event and optionally center the map on it.
-
-    Folium runs in an iframe; to actually pan/highlight we must rerender.
-    Optimization: if the target is already inside current bounds, update sideview selection
-    but keep the map render state unchanged (no redraw/blink).
-    """
-    new_id = None if event_id is None else str(event_id)
-    if st.session_state.get("selected_event_id") == new_id:
-        return
-
-    st.session_state.selected_event_id = new_id
+    """Select an event and optionally center the map on it."""
+    # Store normalized string id to keep comparisons stable across reruns
+    st.session_state.selected_event_id = None if event_id is None else str(event_id)
     ev = _event_lookup_by_id(event_id)
-
-    need_refresh = True
     if center_map and ev:
-        lat = ev["location"]["latitude"]
-        lon = ev["location"]["longitude"]
-        if _in_current_bounds(lat, lon):
-            # Keep current map as-is (no redraw). Sideview will still update.
-            need_refresh = False
-        else:
-            st.session_state.map_center = [lat, lon]
-            st.session_state.map_zoom = zoom
-            need_refresh = True
-    else:
-        need_refresh = False
-
-    if need_refresh:
-        # Only update the rendered-map selection when we actually redraw the iframe
-        st.session_state.map_render_selected_id = new_id
-        st.session_state.force_map_refresh += 1
-
-
-
+        st.session_state.map_center = [ev["location"]["latitude"], ev["location"]["longitude"]]
+        st.session_state.map_zoom = zoom
+    # Force map rebuild so highlight/center takes effect in Folium iframe
+    st.session_state.force_map_refresh += 1
 
 def _match_event_by_latlng(lat: float, lng: float, tol: float = 1e-5):
     """Find the closest event by lat/lng (for marker click selection)."""
@@ -478,22 +448,6 @@ def _match_event_by_latlng(lat: float, lng: float, tol: float = 1e-5):
     if best is not None and best_d is not None and best_d <= tol * 2:
         return best
     return None
-
-
-def _in_current_bounds(lat: float, lng: float) -> bool:
-    """Return True if (lat,lng) is inside the current map bounds reported by st_folium."""
-    b = st.session_state.get("_last_map_bounds")
-    if not b:
-        return False
-    try:
-        # bounds format: {'_southWest': {'lat':..,'lng':..}, '_northEast': {'lat':..,'lng':..}}
-        sw = b.get("_southWest") or b.get("southWest") or {}
-        ne = b.get("_northEast") or b.get("northEast") or {}
-        south, west = float(sw.get("lat")), float(sw.get("lng"))
-        north, east = float(ne.get("lat")), float(ne.get("lng"))
-        return (south <= lat <= north) and (west <= lng <= east)
-    except Exception:
-        return False
 
 
 def get_media_bytes(media_path):
@@ -539,135 +493,6 @@ def get_color_by_year(d):
         return "orange"
     else:
         return "red"
-
-
-def _events_signature(events) -> str:
-    """Stable signature for map-relevant event fields."""
-    minimal = []
-    for e in events or []:
-        loc = e.get("location", {}) or {}
-        minimal.append({
-            "id": str(e.get("id")),
-            "lat": loc.get("latitude"),
-            "lng": loc.get("longitude"),
-            "date": e.get("date", ""),
-            "title": e.get("title", ""),
-        })
-    s = json.dumps(minimal, sort_keys=True, ensure_ascii=False)
-    return hashlib.md5(s.encode("utf-8")).hexdigest()
-
-
-@st.cache_resource(show_spinner=False)
-def _build_base_map_cached(events_sig: str, events_json: str):
-    """Build the heavy Folium map once: clusters, markers, paths."""
-    try:
-        events = json.loads(events_json) if events_json else []
-    except Exception:
-        events = []
-
-    if not events:
-        return folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
-
-    sorted_events = sorted(events, key=lambda x: x.get("date", "0000-00-00"))
-    coords = []
-    for e in sorted_events:
-        loc = e.get("location", {}) or {}
-        lat, lng = loc.get("latitude"), loc.get("longitude")
-        if lat is None or lng is None:
-            continue
-        coords.append([lat, lng])
-
-    m = folium.Map(tiles="OpenStreetMap")
-    cluster = MarkerCluster().add_to(m)
-
-    for idx, e in enumerate(sorted_events, start=1):
-        loc = e.get("location", {}) or {}
-        lat, lng = loc.get("latitude"), loc.get("longitude")
-        if lat is None or lng is None:
-            continue
-
-        escaped_desc = html.escape(f"{e.get('description','')}")
-        tooltip_html = f"""
-                <div style="
-                    font-family: sans-serif;
-                    min-width: 200px;
-                    max-width: 300px;
-                    padding: 8px;
-                    line-height: 1.4;
-                ">
-                    <strong style=\"font-size: 15px;\">{idx}.{e.get('date','')} {html.escape(e.get('title',''))} </strong>
-                    <div style="
-                        font-size: 14px;
-                        color: #333;
-                        font-style: italic;
-                        white-space: normal;
-                        word-wrap: break-word;
-                    ">
-                        {escaped_desc}
-                    </div>
-                </div>
-                """
-
-        folium.Marker(
-            [lat, lng],
-            popup=folium.Popup(build_popup_html(e), max_width=450),
-            tooltip=folium.Tooltip(tooltip_html, perment=False, sticky=True),
-            icon=folium.Icon(color=get_color_by_year(e.get("date","2000-01-01")), icon="circle", prefix="fa")
-        ).add_to(cluster)
-
-        label_html = f"""
-        <div style="
-            font-size: 14pt;
-            color: #333333;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 6px 12px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            white-space: nowrap;
-            font-weight: bold;
-            border: 1px solid #ccc;
-        ">
-            {idx}
-        </div>
-        """
-        folium.Marker(
-            [lat, lng],
-            icon=folium.DivIcon(
-                html=label_html,
-                icon_size=(None, None),
-                icon_anchor=(10, -10)
-            )
-        ).add_to(m)
-
-    if len(coords) > 1:
-        AntPath(
-            locations=coords,
-            color="#50E3C2",
-            weight=2,
-            opacity=0.8,
-            pulse_color="#ffffff",
-            delay=800,
-            dash_array=[10, 20],
-            smooth_factor=50,
-            hardware_accelerated=True,
-            tooltip="Your life journey →"
-        ).add_to(m)
-
-        folium.PolyLine(
-            locations=coords,
-            weight=3,
-            color="#4A90E2",
-            opacity=0.4,
-            smooth_factor=50
-        ).add_to(m)
-
-        m.fit_bounds(coords, padding=(80, 80))
-    else:
-        m.location = coords[0]
-        m.options["zoom"] = 10
-
-    return m
-
 
 
 # # ==================== POPUP ====================
@@ -798,44 +623,10 @@ def build_popup_html(event):
 
 # ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
 def create_map(selected_event_id=None):
-    """Create map with cached heavy base + lightweight selection overlay."""
-    events = st.session_state.data.get("events", [])
-    events_sig = _events_signature(events)
-    events_json = json.dumps(events, ensure_ascii=False, sort_keys=True)
-
-    base = _build_base_map_cached(events_sig, events_json)
-    m = copy.deepcopy(base)
-
-    selected_event = None
-    if selected_event_id is not None:
-        target = str(selected_event_id)
-        selected_event = next((e for e in events if str(e.get("id")) == target), None)
-
-    if selected_event:
-        lat = selected_event["location"]["latitude"]
-        lon = selected_event["location"]["longitude"]
-
-        center = st.session_state.get("map_center")
-        zoom = st.session_state.get("map_zoom", 10)
-        if center:
-            m.location = center
-            m.options["zoom"] = zoom
-        else:
-            m.location = [lat, lon]
-            m.options["zoom"] = 10
-
-        folium.CircleMarker(
-            location=[lat, lon],
-            radius=14,
-            weight=4,
-            color="black",
-            fill=True,
-            fill_opacity=0.2,
-            tooltip="Selected"
-        ).add_to(m)
-
-    return m
-
+    events = st.session_state.data["events"]
+    if not events:
+        m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
+        return m
 
     sorted_events = sorted(events, key=lambda x: x["date"])
     coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
@@ -1155,7 +946,6 @@ if events_for_ui:
     # If nothing is selected yet, default to the first event once (initial load)
     if current_label is None and st.session_state.get("selected_event_id") is None and labels:
         st.session_state.selected_event_id = id_by_label[labels[0]]
-        st.session_state.map_render_selected_id = st.session_state.selected_event_id
         st.session_state["jump_to_event_selectbox"] = labels[0]
         current_label = labels[0]
 
@@ -1228,7 +1018,7 @@ else:
 
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
-main_map = create_map(st.session_state.get("map_render_selected_id"))
+main_map = create_map(st.session_state.get("selected_event_id"))
 
 map_data = st_folium(
     main_map,
@@ -1236,7 +1026,7 @@ map_data = st_folium(
     width=None,
     height=1200,
     use_container_width=True,
-    returned_objects=["last_clicked", "last_object_clicked", "center", "zoom", "bounds"]
+    returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
 
 )
 # ==================== MAP → SELECTION SYNC ====================
