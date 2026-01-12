@@ -8,7 +8,7 @@ from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
 #import os
 import sys
-from datetime import datetime, timedelta, date  
+from datetime import datetime, timedelta, date
 import time
 import base64
 import logging
@@ -122,6 +122,9 @@ if "edit_lon" not in st.session_state:
 if "default_location" not in st.session_state:
     st.session_state.default_name= None
 
+if "selected_event_id" not in st.session_state:
+    st.session_state.selected_event_id = None
+
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
 
@@ -178,6 +181,12 @@ JSON_FILE = BASE_DIR / st.session_state.selected_json_file
 # st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
 
 # ==================== SCAN FOR JSON FILES ====================
+
+def get_sorted_events_with_index():
+    events = st.session_state.data.get("events", [])
+    sorted_events = sorted(events, key=lambda x: x.get("date", "0000-00-00"))
+    return list(enumerate(sorted_events, start=1))  # (1-based index, event)
+
 def get_local_json_files():
     """Scan the current directory for .json files (excluding hidden and system files)"""
     json_files = []
@@ -404,6 +413,38 @@ if "force_map_refresh" not in st.session_state:
     st.session_state.force_map_refresh = 0
 
 
+# ==================== SELECTION / SYNC HELPERS ====================
+def _event_lookup_by_id(event_id: int):
+    return next((e for e in st.session_state.data.get("events", []) if e.get("id") == event_id), None)
+
+def select_event(event_id: int, *, center_map: bool = True, zoom: int = 10):
+    """Select an event and optionally center the map on it."""
+    st.session_state.selected_event_id = event_id
+    ev = _event_lookup_by_id(event_id)
+    if center_map and ev:
+        st.session_state.map_center = [ev["location"]["latitude"], ev["location"]["longitude"]]
+        st.session_state.map_zoom = zoom
+    # Force map rebuild so highlight/center takes effect in Folium iframe
+    st.session_state.force_map_refresh += 1
+
+def _match_event_by_latlng(lat: float, lng: float, tol: float = 1e-5):
+    """Find the closest event by lat/lng (for marker click selection)."""
+    best = None
+    best_d = None
+    for e in st.session_state.data.get("events", []):
+        try:
+            elat = float(e["location"]["latitude"])
+            elng = float(e["location"]["longitude"])
+        except Exception:
+            continue
+        d = abs(elat - lat) + abs(elng - lng)
+        if best_d is None or d < best_d:
+            best, best_d = e, d
+    if best is not None and best_d is not None and best_d <= tol * 2:
+        return best
+    return None
+
+
 def get_media_bytes(media_path):
     """Fetch bytes from GCS (gs://...) or local path"""
     if media_path.startswith("gs://"):
@@ -576,7 +617,7 @@ def build_popup_html(event):
     return popup
 
 # ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
-def create_map():
+def create_map(selected_event_id=None):
     events = st.session_state.data["events"]
     if not events:
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
@@ -585,7 +626,15 @@ def create_map():
     sorted_events = sorted(events, key=lambda x: x["date"])
     coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
 
-    m = folium.Map(tiles="OpenStreetMap")
+    # If an event is selected, center/zoom map on it (and highlight later)
+    selected_event = None
+    if selected_event_id is not None:
+        selected_event = next((e for e in sorted_events if e.get("id") == selected_event_id), None)
+
+    if selected_event:
+        m = folium.Map(location=[selected_event["location"]["latitude"], selected_event["location"]["longitude"]], zoom_start=10, tiles="OpenStreetMap")
+    else:
+        m = folium.Map(tiles="OpenStreetMap")
     cluster = MarkerCluster().add_to(m)
 
     # Add numbered markers
@@ -673,7 +722,23 @@ def create_map():
             smooth_factor=50           # Very high for natural Earth curve
         ).add_to(m)
 
-    m.fit_bounds(coords, padding=(80, 80))
+    # === HIGHLIGHT SELECTED EVENT (drawn on top of cluster) ===
+    if selected_event:
+        lat = selected_event["location"]["latitude"]
+        lon = selected_event["location"]["longitude"]
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=14,
+            weight=4,
+            color="black",
+            fill=True,
+            fill_opacity=0.2,
+            tooltip="Selected"
+        ).add_to(m)
+
+    # If a selection exists, keep current map view (don't auto fit to all points)
+    if not selected_event:
+        m.fit_bounds(coords, padding=(80, 80))
     return m
 
 # ==================== RESPONSIVE CSS BASED ON DETECTED DEVICE ====================
@@ -843,7 +908,54 @@ st.set_page_config(
 
 #st.title("🌍 My Life Journey – Map with Colored Timeline")
 
+
 st.title(full_title)
+
+# ==================== TIMELINE / SIDEBAR / MAP SYNC CONTROLS ====================
+events_for_ui = sorted(st.session_state.data.get("events", []), key=lambda x: x.get("date", "0000-00-00"))
+if events_for_ui:
+    id_by_label = {}
+    labels = []
+    for i, e in enumerate(events_for_ui, start=1):
+        label = f"{i}. {e.get('date','')} — {e.get('title','Untitled')}"
+        labels.append(label)
+        id_by_label[label] = e.get("id")
+
+    # Determine current selection index
+    current_id = st.session_state.get("selected_event_id")
+    current_label = None
+    if current_id is not None:
+        for lab, eid in id_by_label.items():
+            if eid == current_id:
+                current_label = lab
+                break
+
+    c1, c2, c3 = st.columns([6, 1, 1])
+    with c1:
+        picked = st.selectbox(
+            "Jump to a memory",
+            options=labels,
+            index=labels.index(current_label) if current_label in labels else 0,
+            key="jump_to_event_selectbox"
+        )
+    with c2:
+        if st.button("⬅️ Prev", use_container_width=True):
+            idx = labels.index(picked)
+            if idx > 0:
+                select_event(id_by_label[labels[idx-1]])
+                st.rerun()
+    with c3:
+        if st.button("Next ➡️", use_container_width=True):
+            idx = labels.index(picked)
+            if idx < len(labels) - 1:
+                select_event(id_by_label[labels[idx+1]])
+                st.rerun()
+
+    # If selection changed via selectbox, sync
+    picked_id = id_by_label.get(picked)
+    if picked_id is not None and picked_id != st.session_state.get("selected_event_id"):
+        select_event(picked_id)
+        st.rerun()
 
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
@@ -875,6 +987,7 @@ if data["events"]:
             </div>
             '''
 
+
         timeline_html += '</div>'
         st.markdown(timeline_html, unsafe_allow_html=True)
 
@@ -887,7 +1000,7 @@ else:
 
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
-main_map = create_map()
+main_map = create_map(st.session_state.get("selected_event_id"))
 
 map_data = st_folium(
     main_map,
@@ -895,9 +1008,20 @@ map_data = st_folium(
     width=None,
     height=1200,
     use_container_width=True,
-    returned_objects=["last_clicked"]
-    #returned_objects = ["last_clicked", "center", "zoom"]
+    returned_objects=["last_clicked", "last_object_clicked", "center", "zoom"]
+
 )
+# ==================== MAP → SELECTION SYNC ====================
+# Clicking a marker selects the nearest event (works in View or Edit mode)
+if map_data and map_data.get("last_object_clicked"):
+    obj = map_data["last_object_clicked"]
+    lat = float(obj.get("lat"))
+    lng = float(obj.get("lng"))
+    matched = _match_event_by_latlng(lat, lng)
+    if matched and matched.get("id") != st.session_state.get("selected_event_id"):
+        select_event(matched["id"], center_map=True, zoom=10)
+        st.rerun()
+
 # Now check click + mode
 if "app_mode" not in st.session_state:
     st.session_state.app_mode = "View Mode"  # Default
@@ -912,6 +1036,27 @@ else:
 if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
     st.session_state.map_zoom = map_data.get("zoom", 2)
+
+
+# ==================== DETAILS PANEL (SYNCED SELECTION) ====================
+selected = _event_lookup_by_id(st.session_state.get("selected_event_id")) if st.session_state.get("selected_event_id") else None
+with st.expander("🧾 Selected Memory Details", expanded=bool(selected)):
+    if not selected:
+        st.info("Select a memory from the timeline, sidebar, or by clicking a marker on the map.")
+    else:
+        st.markdown(f"### {selected.get('title','Untitled')}")
+        st.caption(f"{selected.get('date','')} • {selected.get('location', {}).get('name','')}")
+        st.write(selected.get("description",""))
+        # Show a few media items (works best for public GCS URLs)
+        photos = selected.get("media", {}).get("photos", [])[:6]
+        videos = selected.get("media", {}).get("videos", [])[:2]
+        if photos:
+            st.write("**Photos**")
+            st.image(photos, use_container_width=True)
+        if videos:
+            st.write("**Videos**")
+            for v in videos:
+                st.video(v)
 
 # ==================== ADD NEW MEMORY ====================
 if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
@@ -1037,6 +1182,7 @@ if st.session_state.editing_event_id:
             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
             st.session_state.latitude = lat
             st.session_state.longitude = lon
+
 
         st.sidebar.header(f"✏️ Editing: {event['title']}")
 
@@ -1582,6 +1728,14 @@ st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {p
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
     with st.sidebar.expander(f"🔹{idx}. {event['date']} — {event['title']}", expanded=False):
+        col_view, col_spacer = st.columns([1, 3])
+        with col_view:
+            if st.button("👁️ View", key=f"view_sidebar_{event['id']}"):
+                select_event(event["id"], center_map=True, zoom=10)
+                st.rerun()
+        with col_spacer:
+            pass
+        
         st.caption(f"📍 {event['location']['name']}")
         for p in event["media"].get("photos", [])[:3]:
             if os.path.exists(p):
