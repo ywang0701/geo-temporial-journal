@@ -415,11 +415,16 @@ if "force_map_refresh" not in st.session_state:
 
 # ==================== SELECTION / SYNC HELPERS ====================
 def _event_lookup_by_id(event_id: int):
-    return next((e for e in st.session_state.data.get("events", []) if e.get("id") == event_id), None)
+    # Normalize to string because many JSONs store ids as strings.
+    if event_id is None:
+        return None
+    target = str(event_id)
+    return next((e for e in st.session_state.data.get("events", []) if str(e.get("id")) == target), None)
 
-def select_event(event_id: int, *, center_map: bool = True, zoom: int = 10):
+def select_event(event_id, *, center_map: bool = True, zoom: int = 10):
     """Select an event and optionally center the map on it."""
-    st.session_state.selected_event_id = event_id
+    # Store normalized string id to keep comparisons stable across reruns
+    st.session_state.selected_event_id = None if event_id is None else str(event_id)
     ev = _event_lookup_by_id(event_id)
     if center_map and ev:
         st.session_state.map_center = [ev["location"]["latitude"], ev["location"]["longitude"]]
@@ -629,7 +634,8 @@ def create_map(selected_event_id=None):
     # If an event is selected, center/zoom map on it (and highlight later)
     selected_event = None
     if selected_event_id is not None:
-        selected_event = next((e for e in sorted_events if e.get("id") == selected_event_id), None)
+        target = str(selected_event_id)
+        selected_event = next((e for e in sorted_events if str(e.get("id")) == target), None)
 
     if selected_event:
         m = folium.Map(location=[selected_event["location"]["latitude"], selected_event["location"]["longitude"]], zoom_start=10, tiles="OpenStreetMap")
@@ -919,16 +925,29 @@ if events_for_ui:
     for i, e in enumerate(events_for_ui, start=1):
         label = f"{i}. {e.get('date','')} — {e.get('title','Untitled')}"
         labels.append(label)
-        id_by_label[label] = e.get("id")
+        # Normalize IDs to str to avoid type-mismatch resetting selection to the 1st item
+        id_by_label[label] = None if e.get("id") is None else str(e.get("id"))
 
-    # Determine current selection index
+    # Determine the label that corresponds to the currently selected event_id
     current_id = st.session_state.get("selected_event_id")
     current_label = None
     if current_id is not None:
         for lab, eid in id_by_label.items():
-            if eid == current_id:
+            if eid is not None and str(eid) == str(current_id):
                 current_label = lab
                 break
+
+    # Keep the selectbox widget in sync with selection coming from map/sidebar clicks.
+    # Streamlit widgets keep their own state; if we don't update it, it can "snap back"
+    # and overwrite selected_event_id on rerun.
+    if current_label is not None and st.session_state.get("jump_to_event_selectbox") != current_label:
+        st.session_state["jump_to_event_selectbox"] = current_label
+
+    # If nothing is selected yet, default to the first event once (initial load)
+    if current_label is None and st.session_state.get("selected_event_id") is None and labels:
+        st.session_state.selected_event_id = id_by_label[labels[0]]
+        st.session_state["jump_to_event_selectbox"] = labels[0]
+        current_label = labels[0]
 
     c1, c2, c3 = st.columns([6, 1, 1])
     with c1:
@@ -951,12 +970,11 @@ if events_for_ui:
                 select_event(id_by_label[labels[idx+1]])
                 st.rerun()
 
-    # If selection changed via selectbox, sync
+    # If user changed selection via selectbox, sync to selected_event_id
     picked_id = id_by_label.get(picked)
-    if picked_id is not None and picked_id != st.session_state.get("selected_event_id"):
+    if picked_id is not None and str(picked_id) != str(st.session_state.get("selected_event_id")):
         select_event(picked_id)
         st.rerun()
-
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
     sorted_events = sorted(data["events"], key=lambda x: x["date"])
@@ -1018,8 +1036,8 @@ if map_data and map_data.get("last_object_clicked"):
     lat = float(obj.get("lat"))
     lng = float(obj.get("lng"))
     matched = _match_event_by_latlng(lat, lng)
-    if matched and matched.get("id") != st.session_state.get("selected_event_id"):
-        select_event(matched["id"], center_map=True, zoom=10)
+    if matched and str(matched.get("id")) != str(st.session_state.get("selected_event_id")):
+        select_event(matched.get("id"), center_map=True, zoom=10)
         st.rerun()
 
 # Now check click + mode
