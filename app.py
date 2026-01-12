@@ -293,14 +293,6 @@ local_json_files = available_journeys
 
 # ==================== ROBUST DATA INITIALIZATION ====================
 def ensure_valid_json():
-    """Ensure a local JSON file exists and is non-empty.
-
-    In Streamlit Cloud / GCS mode, load_data_from_file() already handles missing blobs
-    (and creating a default), so we avoid local-path checks that would trigger unnecessary uploads.
-    """
-    if IS_CLOUD:
-        return
-
     if not JSON_FILE.exists() or JSON_FILE.stat().st_size == 0:
         default_data = {
             "autobiography": {
@@ -311,10 +303,10 @@ def ensure_valid_json():
             },
             "events": []
         }
-        save_data_to_storage(default_data)
+        # todo JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        save_data_to_storage(st.session_state.data)
 
 # Load data from GCS or local
-
 @st.cache_data(show_spinner=False)
 def load_data_from_file(blob_or_path):
     try:
