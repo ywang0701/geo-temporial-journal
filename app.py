@@ -48,6 +48,9 @@ logger.info(f"Detected IS_CLOUD = {os.getenv('DEPLOY_ENV') == 'cloud'}")
 if "selected_json_file" not in st.session_state:
     st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
 
+if "reset_map" not in st.session_state:
+    st.session_state.reset_map = True
+
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys.executable).parent
 else:
@@ -197,7 +200,6 @@ def get_local_json_files():
 
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
-    #if os.getenv("K_SERVICE1"):
     if IS_CLOUD:
         logger.info(f" Save to cloud {JSON_BLOB_NAME}")
         upload_to_gcs(json_text.encode("utf-8"), JSON_BLOB_NAME, "application/json")
@@ -366,9 +368,6 @@ if data["events"]:
         end_year = max(dates).year
         timeline_info = f" ({start_year} – {end_year})"
 
-# Final dynamic title
-#full_title = f"🌍 {display_name} - Map{timeline_info}"
-# full_title = f"🌍 Life Events - Map {timeline_info}  - test version"
 # ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
 json_filename = JSON_FILE.name
 if st.session_state.selected_json_file:
@@ -682,7 +681,7 @@ def create_map():
             smooth_factor=50           # Very high for natural Earth curve
         ).add_to(m)
 
-    m.fit_bounds(coords, padding=(80, 80))
+    #m.fit_bounds(coords, padding=(80, 80))
     return m
 
 # ==================== RESPONSIVE CSS BASED ON DETECTED DEVICE ====================
@@ -852,7 +851,54 @@ st.set_page_config(
 
 #st.title("🌍 My Life Journey – Map with Colored Timeline")
 
-st.title(full_title)
+full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
+
+
+
+# ==================== CENTER ON MARKER CONTROL ====================
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    col_title, col_reset, col_btn, col_num= st.columns([10, 1, 1, 1])
+    #col1, col2 = st.columns([3, 1])
+    with col_title:
+        st.title(full_title)
+    with col_reset:
+        if st.button("Reset to Full View"):
+            st.session_state.map_center = [20, 0]
+            st.session_state.map_zoom = 2
+            st.session_state.force_map_refresh += 1
+            st.session_state.reset = True
+            st.rerun()
+
+    with col_num:
+        marker_id = st.number_input("Go to marker ID", min_value=1, max_value=len(sorted_events), value=1, step=1, label_visibility="collapsed")
+    with col_btn:
+        if st.button("Visit => Marker"):
+            if 1 <= marker_id <= len(sorted_events):
+                idx = marker_id - 1
+                event = sorted_events[idx]
+                lat = event["location"]["latitude"]
+                lon = event["location"]["longitude"]
+                st.session_state.map_center = [lat, lon]
+                st.session_state.map_zoom = 12  # Adjust zoom level as needed
+                st.session_state.force_map_refresh += 1
+                #     title = html.escape(event.get('title', 'Untitled'))
+                #st.write("DEBUG: Current event name =", event["title"])
+                #st.write("DEBUG: Current event name =", event["id"])
+                #st.write("DEBUG: Current map_center in session_state =", st.session_state.get("map_center"))
+                #st.write("DEBUG: Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
+                #st.write("DEBUG: force_map_refresh counter =", st.session_state.force_map_refresh)
+                # Debug: show current target values
+                logger.info(f"DEBUG: Current Marker ID idx = {st.session_state.get("idx")}")
+                logger.info(f"DEBUG: Current Marker ID id  = {event["id"]}")
+                logger.info(f"DEBUG: Current Marker ID = {event["title"]}")
+                logger.info(f"DEBUG: Current map_center in session_state = {st.session_state.get("map_center")}")
+                logger.info(f"DEBUG: Current map_zoom   in session_state = {st.session_state.get("map_zoom")}")
+                # st.rerun()
+            else:
+                st.error("Invalid marker ID")
+
+#st.title(full_title)
 
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
@@ -895,6 +941,20 @@ if data["events"]:
 else:
     st.info("Add memories to see the extended timeline.")
 
+    st.write("DEBUG: bf create_map Current map_center in session_state =", st.session_state.get("map_center"))
+    st.write("DEBUG: bf create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
+    st.write("DEBUG: bf create_map force_map_refresh counter =", st.session_state.force_map_refresh)
+
+# Conditionally pass center/zoom only if not default (allows fit_bounds to take effect initially)
+center = st.session_state.map_center if st.session_state.map_center != [20, 0] else None
+zoom = st.session_state.map_zoom if st.session_state.map_zoom != 2 else None
+
+#st.session_state.map_center = [20, 0]
+#st.session_state.map_zoom = 12
+#st.write("DEBUG: af create_map Current map_center in session_state =", st.session_state.get("map_center"))
+#st.write("DEBUG: af create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
+#st.write("DEBUG: af create_map force_map_refresh counter =", st.session_state.force_map_refresh)
+
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
 main_map = create_map()
@@ -902,12 +962,19 @@ main_map = create_map()
 map_data = st_folium(
     main_map,
     key=map_key,
+    center=st.session_state.map_center,
+    zoom=st.session_state.map_zoom,
     width=None,
     height=1200,
     use_container_width=True,
     returned_objects=["last_clicked"]
     #returned_objects = ["last_clicked", "center", "zoom"]
 )
+
+
+full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
+
+
 # Now check click + mode
 if "app_mode" not in st.session_state:
     st.session_state.app_mode = "View Mode"  # Default
