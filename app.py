@@ -199,6 +199,12 @@ if "journey" in st.query_params:
             st.warning(f"Journey '{requested}' not found or inaccessible.")
     else:
         st.warning("Invalid journey link.")
+
+st.write("DEBUG: st.query_params →", dict(st.query_params))
+st.write("DEBUG: selected_json_file (start) →", st.session_state.get("selected_json_file", "NOT SET"))
+
+
+
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
