@@ -173,7 +173,32 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+# ── Handle shared journey via URL query param ────────────────────────────────
+if "journey" in st.query_params:
+    requested = st.query_params["journey"][0] if isinstance(st.query_params["journey"], list) else st.query_params[
+        "journey"]
 
+    # Basic safety: must end with .json and no dangerous characters
+    if requested.endswith(".json") and all(c.isalnum() or c in "-_" for c in requested.replace(".json", "")):
+        # Optional: normalize (you can skip if filenames are already clean)
+        requested = requested.lower().replace(" ", "-") + ".json" if not requested.endswith(".json") else requested
+
+        # Check if this journey actually exists in GCS / local
+        blob_name = get_json_path(requested) if IS_CLOUD else str(BASE_DIR / requested)
+        try:
+            # Try a quick existence check (lightweight)
+            if IS_CLOUD:
+                bucket.blob(blob_name).exists()
+            else:
+                Path(blob_name).exists()
+
+            st.session_state.selected_json_file = requested
+            st.session_state.app_mode = "View Mode"  # force read-only for shared links
+            st.toast(f"Opened shared journey: {requested.replace('.json', '').replace('-', ' ').title()}", icon="🔗")
+        except:
+            st.warning(f"Journey '{requested}' not found or inaccessible.")
+    else:
+        st.warning("Invalid journey link.")
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
