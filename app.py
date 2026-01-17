@@ -1681,6 +1681,17 @@ if IS_CLOUD and "selected_json_file" in st.session_state and st.session_state.se
             # Note: real clipboard copy needs JS → this toast + code block is the idiomatic Streamlit way
     with col_open:
         st.link_button("Test link", share_url, use_container_width=True)
+
+        # Show the link in a selectable text area
+    st.sidebar.text_area("Share URL (click to select)", share_url, height=68, disabled=True)
+
+    col1, col2 = st.sidebar.columns([3, 2])
+    with col1:
+        if st.sidebar.button("📋 Copy link"):
+            st.sidebar.success("Link selected above — press Ctrl+C / Cmd+C now!")
+    with col2:
+        st.sidebar.link_button("Test", share_url)
+
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
