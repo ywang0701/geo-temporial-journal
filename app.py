@@ -1672,37 +1672,40 @@ if IS_CLOUD and "selected_json_file" in st.session_state:
 
     st.sidebar.markdown("**Share this journey** (read-only view)")
     st.sidebar.caption(f"→ {display_name}")
+    st.sidebar.markdown(f"**Share this journey** (read-only view for **{display_name}**)")
 
     # Show the link (user can see & manually copy if JS fails)
     st.sidebar.code(share_url, language=None)
 
     # ── Modern clipboard copy (works in most browsers 2025+) ──
-    copy_button_key = f"copy_{current_filename}"  # unique key to avoid conflict
+    #copy_button_key = f"copy_{current_filename}"  # unique key to avoid conflict
+    # Use the component for easy button copy
+    st_copy_to_clipboard(share_url, button_text="📋 Copy link", success_text="Link copied!")
 
-    if st.sidebar.button("📋 Copy link", key=copy_button_key):
-        # This is just UX feedback — the real copy is done via JS below
-        st.sidebar.success("Link copied to clipboard!")
-
-    # JavaScript to actually copy to clipboard (most reliable method)
-    js_copy_code = f"""
-    <script>
-    const btn = window.parent.document.querySelector('button[kind="primary"][data-testid="stButton"][aria-label*="Copy link"]') ||
-                window.parent.document.querySelector('button[data-baseweb="button"]');
-    if (btn) {{
-        btn.addEventListener('click', () => {{
-            navigator.clipboard.writeText(`{share_url}`)
-                .then(() => {{
-                    alert('Link copied! You can paste it now.');
-                }})
-                .catch(err => {{
-                    console.error('Copy failed', err);
-                    alert('Copy failed – please copy from the code block above.');
-                }});
-        }});
-    }}
-    </script>
-    """
-    st.sidebar.markdown(js_copy_code, unsafe_allow_html=True)
+    # if st.sidebar.button("📋 Copy link", key=copy_button_key):
+    #     # This is just UX feedback — the real copy is done via JS below
+    #     st.sidebar.success("Link copied to clipboard!")
+    #
+    # # JavaScript to actually copy to clipboard (most reliable method)
+    # js_copy_code = f"""
+    # <script>
+    # const btn = window.parent.document.querySelector('button[kind="primary"][data-testid="stButton"][aria-label*="Copy link"]') ||
+    #             window.parent.document.querySelector('button[data-baseweb="button"]');
+    # if (btn) {{
+    #     btn.addEventListener('click', () => {{
+    #         navigator.clipboard.writeText(`{share_url}`)
+    #             .then(() => {{
+    #                 alert('Link copied! You can paste it now.');
+    #             }})
+    #             .catch(err => {{
+    #                 console.error('Copy failed', err);
+    #                 alert('Copy failed – please copy from the code block above.');
+    #             }});
+    #     }});
+    # }}
+    # </script>
+    # """
+    # st.sidebar.markdown(js_copy_code, unsafe_allow_html=True)
 
     # Fallback / test button
     st.sidebar.link_button("🔗 Open in new tab", share_url, use_container_width=True)
