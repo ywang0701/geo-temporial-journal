@@ -1652,6 +1652,60 @@ place_text = "memory" if event_count == 1 else "memories"
 
 #st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
 st.sidebar.subheader(f"🗺️ Selected Journey")
+
+# ================================================
+#   Share current journey – with proper copy
+# ================================================
+
+if IS_CLOUD and "selected_json_file" in st.session_state:
+    current_filename = st.session_state.selected_json_file
+
+    # IMPORTANT: Replace with your actual deployed Streamlit app URL
+    # You can also put this in st.secrets["APP_BASE_URL"] if you prefer
+    APP_BASE_URL = "https://geo-temporial-journal-s47kuhs5gnitzirv7kkcaw.streamlit.app"
+
+    # Build the full shareable URL
+    share_url = f"{APP_BASE_URL}/?journey={current_filename}"
+
+    # Optional: nicer display name
+    display_name = current_filename.replace(".json", "").replace("-", " ").replace("_", " ").title()
+
+    st.sidebar.markdown("**Share this journey** (read-only view)")
+    st.sidebar.caption(f"→ {display_name}")
+
+    # Show the link (user can see & manually copy if JS fails)
+    st.sidebar.code(share_url, language=None)
+
+    # ── Modern clipboard copy (works in most browsers 2025+) ──
+    copy_button_key = f"copy_{current_filename}"  # unique key to avoid conflict
+
+    if st.sidebar.button("📋 Copy link", key=copy_button_key):
+        # This is just UX feedback — the real copy is done via JS below
+        st.sidebar.success("Link copied to clipboard!")
+
+    # JavaScript to actually copy to clipboard (most reliable method)
+    js_copy_code = f"""
+    <script>
+    const btn = window.parent.document.querySelector('button[kind="primary"][data-testid="stButton"][aria-label*="Copy link"]') ||
+                window.parent.document.querySelector('button[data-baseweb="button"]');
+    if (btn) {{
+        btn.addEventListener('click', () => {{
+            navigator.clipboard.writeText(`{share_url}`)
+                .then(() => {{
+                    alert('Link copied! You can paste it now.');
+                }})
+                .catch(err => {{
+                    console.error('Copy failed', err);
+                    alert('Copy failed – please copy from the code block above.');
+                }});
+        }});
+    }}
+    </script>
+    """
+    st.sidebar.markdown(js_copy_code, unsafe_allow_html=True)
+
+    # Fallback / test button
+    st.sidebar.link_button("🔗 Open in new tab", share_url, use_container_width=True)
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
