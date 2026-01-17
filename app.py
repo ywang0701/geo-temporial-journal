@@ -199,12 +199,6 @@ if "journey" in st.query_params:
             st.warning(f"Journey '{requested}' not found or inaccessible.")
     else:
         st.warning("Invalid journey link.")
-
-#st.write("DEBUG: st.query_params →", dict(st.query_params))
-#st.write("DEBUG: selected_json_file (start) →", st.session_state.get("selected_json_file", "NOT SET"))
-
-
-
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
@@ -1658,40 +1652,6 @@ place_text = "memory" if event_count == 1 else "memories"
 
 #st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
 st.sidebar.subheader(f"🗺️ Selected Journey")
-# ── Share current journey ────────────────────────────────────────────────────
-if IS_CLOUD and "selected_json_file" in st.session_state and st.session_state.selected_json_file:
-    current_file = st.session_state.selected_json_file
-    base_url = "https://https://geo-temporial-journal-s47kuhs5gnitzirv7kkcaw.streamlit.app/"  # ← CHANGE THIS to your real deployed URL
-
-    # Optional: friendly name instead of filename
-    friendly = current_file.replace(".json", "").replace("-", " ").replace("_", " ").title()
-
-    share_url = f"{base_url}/?journey={current_file}"
-
-    st.sidebar.divider()
-    st.sidebar.subheader("🔗 Share this Journey")
-    st.sidebar.caption(f"Anyone with the link can view **{friendly}** (read-only)")
-
-    st.sidebar.code(share_url, language=None)
-
-    col_copy, col_open = st.sidebar.columns([3, 2])
-    with col_copy:
-        if st.button("📋 Copy link", use_container_width=True):
-            st.success("Link copied to clipboard!")
-            # Note: real clipboard copy needs JS → this toast + code block is the idiomatic Streamlit way
-    with col_open:
-        st.link_button("Test link", share_url, use_container_width=True)
-
-        # Show the link in a selectable text area
-    st.sidebar.text_area("Share URL (click to select)", share_url, height=68, disabled=True)
-
-    col1, col2 = st.sidebar.columns([3, 2])
-    with col1:
-        if st.sidebar.button("📋 Copy link"):
-            st.sidebar.success("Link selected above — press Ctrl+C / Cmd+C now!")
-    with col2:
-        st.sidebar.link_button("Test", share_url)
-
 # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
 # Create a single row with label and radio buttons
 col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
