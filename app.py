@@ -1,7 +1,7 @@
 #import select
 import streamlit as st
 from streamlit_folium import st_folium
-#import streamlit.components.v1 as components
+import streamlit.components.v1 as components
 import folium
 from folium.plugins import MarkerCluster
 from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
@@ -21,6 +21,7 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
+key = st.secrets.clerk.publishable_key
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -220,7 +221,6 @@ def is_journey_locked(json_filename):
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
 
 JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
@@ -903,6 +903,32 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state=initial_sidebar   # ← Use the variable here
 )
+
+#========================== Login Session ===========================
+
+import os
+import streamlit as st
+
+CLERK_PUBLISHABLE_KEY = (
+    st.secrets["clerk"]["publishable_key"]
+    if "clerk" in st.secrets
+    else os.getenv("CLERK_PUBLISHABLE_KEY")
+)
+
+if not CLERK_PUBLISHABLE_KEY:
+    st.error("Clerk Publishable Key is missing")
+    st.stop()
+
+# Now safely use it in the JavaScript
+clerk_auth_html = f"""
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script>
+<script>
+    const clerk = new Clerk("{CLERK_PUBLISHABLE_KEY}");
+    // ...
+</script>
+"""
+
+st.markdown( f" CLERK {CLERK_PUBLISHABLE_KEY}")
 
 #st.title("🌍 My Life Journey – Map with Colored Timeline")
 
