@@ -128,6 +128,12 @@ if "default_location" not in st.session_state:
 if "selected_event_id" not in st.session_state:
     st.session_state.selected_event_id = None
 
+if "current_journey_locked" not in st.session_state:
+    st.session_state.current_journey_locked = False
+
+if "add_new_memory" not in st.session_state:
+    st.session_state.add_new_memory = False
+
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
 
@@ -193,12 +199,24 @@ if "journey" in st.query_params:
                 Path(blob_name).exists()
 
             st.session_state.selected_json_file = requested
-            st.session_state.app_mode = "View Mode"  # force read-only for shared links
+            #st.session_state.app_mode = "View Mode"  # force read-only for shared links
             st.toast(f"Opened shared journey: {requested.replace('.json', '').replace('-', ' ').title()}", icon="🔗")
         except:
             st.warning(f"Journey '{requested}' not found or inaccessible.")
     else:
         st.warning("Invalid journey link.")
+
+
+def is_journey_locked(json_filename):
+    if IS_CLOUD:
+        lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
+        return lock_blob.exists()
+    else:
+        lock_path = BASE_DIR / f"{json_filename}_lock"
+        return lock_path.exists()
+
+
+
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
@@ -267,6 +285,18 @@ if not available_journeys:
 else:
     # Normal case: journeys exist
     pass
+
+def is_journey_locked(json_filename):
+    if IS_CLOUD:
+        lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
+        return lock_blob.exists()
+    else:
+        lock_path = BASE_DIR / f"{json_filename}_lock"
+        return lock_path.exists()
+
+# Right after st.session_state.selected_json_file = json_name
+st.session_state.current_journey_locked = is_journey_locked(st.session_state.selected_json_file)
+
 
 local_json_files = available_journeys
 
@@ -1016,7 +1046,8 @@ if map_data and map_data.get("center"):
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
 # ==================== ADD NEW MEMORY ====================
-if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
+#if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
+if not st.session_state.current_journey_locked and st.session_state.add_new_memory and map_data and map_data.get("last_clicked"):
     click = map_data["last_clicked"]
     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
     default_name = f"{lat:.5f}, {lon:.5f}"
@@ -1117,16 +1148,20 @@ if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_
                 st.session_state.force_map_refresh += 1
                 st.success("Memory added!")
                 st.rerun()
-    # === CANCEL BUTTON — OUTSIDE THE FORM ===
-    if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
-        st.session_state.app_mode = "View Mode"
-        st.success("Adding Memory cancelled!")
-        st.rerun()  # Clears the form by removing last_clicked state
+        # === CANCEL BUTTON — OUTSIDE THE FORM ===
+        if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+            st.session_state.current_journey_locked = False
+            st.session_state.add_new_memory = False
+            st.success("Adding Memory cancelled!")
+            st.rerun()  # Clears the form by removing last_clicked state
         #if cancel_clicked:
         #    st.rerun()
+#else:
+#    if map_data and map_data.get("last_clicked"):
+#        st.sidebar.info("🔒 This journey is locked — cannot add new memories")
 
 # ==================== EDITING EXISTING EVENT ====================
-if st.session_state.editing_event_id:
+if not st.session_state.current_journey_locked and st.session_state.editing_event_id:
     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
     if event:
         if map_data and map_data.get("last_clicked"):
@@ -1261,196 +1296,205 @@ if st.session_state.editing_event_id:
             if st.sidebar.button("Cancel Editing"):
                 st.session_state.editing_event_id = None
                 st.rerun()
+else:
+    if st.session_state.editing_event_id:
+        st.warning("Cannot edit — journey is locked")
+        st.session_state.editing_event_id = None
+        st.rerun()
+
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
-# ==================== CREATE NEW JOURNEY ====================
-#st.sidebar.markdown("---")
-with st.sidebar.expander("➕ Create New Journey", expanded=False):
-    st.write("Enter a name for your new journey. It will start empty.")
+if not st.session_state.current_journey_locked:
+    # ==================== CREATE NEW JOURNEY ====================
+    #st.sidebar.markdown("---")
+    with st.sidebar.expander("➕ Create New Journey", expanded=False):
+        st.write("Enter a name for your new journey. It will start empty.")
 
-    new_journey_name = st.text_input(
-        "Journey Name*",
-        placeholder="e.g., My 2026 Adventures",
-        help="Use letters, numbers, spaces, or hyphens. The file will be saved as a .json."
-    )
-
-    if new_journey_name:
-        # Clean the input to make a safe filename
-        clean_name = (
-            new_journey_name.strip()
-            .lower()
-            .replace(" ", "-")
-            .replace("_", "-")
-            .replace("/", "")
-            .replace("\\", "")
+        new_journey_name = st.text_input(
+            "Journey Name*",
+            placeholder="e.g., My 2026 Adventures",
+            help="Use letters, numbers, spaces, or hyphens. The file will be saved as a .json."
         )
-        if not clean_name:
-            st.error("Please enter a valid name.")
-        else:
-            new_filename = f"{clean_name}.json"
-            new_file_path = BASE_DIR / new_filename
 
-            if new_file_path.exists():
-                st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+        if new_journey_name:
+            # Clean the input to make a safe filename
+            clean_name = (
+                new_journey_name.strip()
+                .lower()
+                .replace(" ", "-")
+                .replace("_", "-")
+                .replace("/", "")
+                .replace("\\", "")
+            )
+            if not clean_name:
+                st.error("Please enter a valid name.")
             else:
-                col_create, col_cancel = st.columns(2)
-                with col_create:
-                    if st.button("✅ Create Journey", type="primary", use_container_width=True):
-                        try:
-                            # Default JSON structure
-                            default_data = {
-                                "autobiography": {
-                                    "title": new_journey_name,
-                                    "author": "Your Name",
-                                    "created_date": datetime.now().strftime("%Y-%m-%d"),
-                                    "last_updated": datetime.now().strftime("%Y-%m-%d")
-                                },
-                                "events": []
-                            }
+                new_filename = f"{clean_name}.json"
+                new_file_path = BASE_DIR / new_filename
 
-                            # Write the new JSON file
-                            new_file_path.write_text(
-                                json.dumps(default_data, indent=4, ensure_ascii=False),
-                                encoding="utf-8"
-                            )
+                if new_file_path.exists():
+                    st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+                else:
+                    col_create, col_cancel = st.columns(2)
+                    with col_create:
+                        if st.button("✅ Create Journey", type="primary", use_container_width=True):
+                            try:
+                                # Default JSON structure
+                                default_data = {
+                                    "autobiography": {
+                                        "title": new_journey_name,
+                                        "author": "Your Name",
+                                        "created_date": datetime.now().strftime("%Y-%m-%d"),
+                                        "last_updated": datetime.now().strftime("%Y-%m-%d")
+                                    },
+                                    "events": []
+                                }
 
-                            # Switch to the new journey
-                            st.session_state.selected_json_file = new_filename
-                            save_data_to_storage(st.session_state.data)
-                            # todo JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False),
-                            #                     encoding="utf-8")
+                                # Write the new JSON file
+                                new_file_path.write_text(
+                                    json.dumps(default_data, indent=4, ensure_ascii=False),
+                                    encoding="utf-8"
+                                )
 
-                            # Clear cache and reset state
-                            st.cache_data.clear()
-                            if "data" in st.session_state:
-                                del st.session_state["data"]
-                            if "editing_event_id" in st.session_state:
-                                del st.session_state["editing_event_id"]
-                            keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
-                            for k in keys_to_reset:
-                                if k in st.session_state:
-                                    del st.session_state[k]
+                                # Switch to the new journey
+                                st.session_state.selected_json_file = new_filename
+                                save_data_to_storage(st.session_state.data)
+                                # todo JSON_FILE.write_text(json.dumps(default_data, indent=4, ensure_ascii=False),
+                                #                     encoding="utf-8")
 
-                            st.success(f"✅ Created and switched to: **{new_journey_name}** (0 places)")
+                                # Clear cache and reset state
+                                st.cache_data.clear()
+                                if "data" in st.session_state:
+                                    del st.session_state["data"]
+                                if "editing_event_id" in st.session_state:
+                                    del st.session_state["editing_event_id"]
+                                keys_to_reset = ["map_center", "map_zoom", "force_map_refresh"]
+                                for k in keys_to_reset:
+                                    if k in st.session_state:
+                                        del st.session_state[k]
+
+                                st.success(f"✅ Created and switched to: **{new_journey_name}** (0 places)")
+                                st.rerun()
+
+                            except Exception as e:
+                                st.error(f"Failed to create journey: {e}")
+                    st.session_state.current_journey_locked = is_journey_locked(new_journey_name)
+
+                    with col_cancel:
+                        if st.button("❌ Cancel", type="secondary", use_container_width=True):
                             st.rerun()
 
-                        except Exception as e:
-                            st.error(f"Failed to create journey: {e}")
+    # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
+    with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
+        st.write("Change the name of an existing journey. This renames the file and updates the title.")
 
-                with col_cancel:
-                    if st.button("❌ Cancel", type="secondary", use_container_width=True):
-                        st.rerun()
+        available_journeys = get_local_json_files()
 
-# ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
-with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
-    st.write("Change the name of an existing journey. This renames the file and updates the title.")
-
-    available_journeys = get_local_json_files()
-
-    if not available_journeys:
-        st.info("No journeys available to rename.")
-    else:
-        # Select journey to rename
-        journey_to_rename = st.selectbox(
-            "Select journey to rename",
-            options=available_journeys,
-            index=available_journeys.index(st.session_state.selected_json_file)
-            if st.session_state.selected_json_file in available_journeys else 0,
-            help="Choose the journey you want to rename"
-        )
-
-        # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
-        blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
-        try:
-            current_data = load_data_from_file(blob_or_path)
-            current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
-            event_count = len(current_data.get("events", []))
-
-            # Format nice display name
-            current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
-            current_display = " ".join(word.capitalize() for word in current_display.split())
-
-            st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
-        except Exception as e:
-            st.error(f"Could not load journey data: {e}")
-            current_display = journey_to_rename.replace(".json", "")
-            current_title = current_display
-            current_data = None
-
-        # === NOW USE current_display SAFELY ===
-        new_journey_name = st.text_input(
-            "New Journey Name*",
-            value=current_title,  # Pre-fill with actual title, not filename
-            placeholder="e.g., Europe Adventure 2025",
-            help="This will become the new display title and filename"
-        )
-
-        if new_journey_name and new_journey_name.strip():
-            if new_journey_name.strip() == current_title:
-                st.info("New name is the same as current — nothing to do.")
-            else:
-                # Clean for safe filename
-                clean_name = (
-                    new_journey_name.strip()
-                    .lower()
-                    .replace(" ", "-")
-                    .replace("_", "-")
-                    .replace("/", "")
-                    .replace("\\", "")
-                    .replace(".", "")
-                )
-                if not clean_name:
-                    st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
-                else:
-                    new_filename = f"{clean_name}.json"
-                    new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
-
-                    # Check if new filename already exists
-                    if new_filename in available_journeys:
-                        st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
-                    else:
-                        col_rename, col_cancel = st.columns(2)
-                        with col_rename:
-                            if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
-                                if current_data is None:
-                                    st.error("Cannot rename: failed to load current journey data.")
-                                else:
-                                    try:
-                                        # Update title in data
-                                        current_data["autobiography"]["title"] = new_journey_name.strip()
-                                        current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-
-                                        json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
-
-                                        # Save to new location
-                                        if IS_CLOUD:
-                                            upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
-                                            # Delete old blob
-                                            bucket.blob(get_json_path(journey_to_rename)).delete()
-                                            st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
-                                        else:
-                                            (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
-                                            (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
-                                            st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
-
-                                        # If renaming the currently active journey, update session
-                                        if journey_to_rename == st.session_state.selected_json_file:
-                                            st.session_state.selected_json_file = new_filename
-                                            st.cache_data.clear()
-                                            if "data" in st.session_state:
-                                                del st.session_state["data"]
-
-                                        st.rerun()
-
-                                    except Exception as e:
-                                        st.error(f"Rename failed: {e}")
-                                        logger.error(f"Rename error: {e}")
-
-                        with col_cancel:
-                            st.button("❌ Cancel", type="secondary", use_container_width=True)
+        if not available_journeys:
+            st.info("No journeys available to rename.")
         else:
-            st.warning("Please enter a new journey name.")
+            # Select journey to rename
+            journey_to_rename = st.selectbox(
+                "Select journey to rename",
+                options=available_journeys,
+                index=available_journeys.index(st.session_state.selected_json_file)
+                if st.session_state.selected_json_file in available_journeys else 0,
+                help="Choose the journey you want to rename"
+            )
+
+            # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
+            blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
+            try:
+                current_data = load_data_from_file(blob_or_path)
+                current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
+                event_count = len(current_data.get("events", []))
+
+                # Format nice display name
+                current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
+                current_display = " ".join(word.capitalize() for word in current_display.split())
+
+                st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
+            except Exception as e:
+                st.error(f"Could not load journey data: {e}")
+                current_display = journey_to_rename.replace(".json", "")
+                current_title = current_display
+                current_data = None
+
+            # === NOW USE current_display SAFELY ===
+            new_journey_name = st.text_input(
+                "New Journey Name*",
+                value=current_title,  # Pre-fill with actual title, not filename
+                placeholder="e.g., Europe Adventure 2025",
+                help="This will become the new display title and filename"
+            )
+
+            if new_journey_name and new_journey_name.strip():
+                if new_journey_name.strip() == current_title:
+                    st.info("New name is the same as current — nothing to do.")
+                else:
+                    # Clean for safe filename
+                    clean_name = (
+                        new_journey_name.strip()
+                        .lower()
+                        .replace(" ", "-")
+                        .replace("_", "-")
+                        .replace("/", "")
+                        .replace("\\", "")
+                        .replace(".", "")
+                    )
+                    if not clean_name:
+                        st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
+                    else:
+                        new_filename = f"{clean_name}.json"
+                        new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
+
+                        # Check if new filename already exists
+                        if new_filename in available_journeys:
+                            st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+                        else:
+                            col_rename, col_cancel = st.columns(2)
+                            with col_rename:
+                                if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
+                                    if current_data is None:
+                                        st.error("Cannot rename: failed to load current journey data.")
+                                    else:
+                                        try:
+                                            # Update title in data
+                                            current_data["autobiography"]["title"] = new_journey_name.strip()
+                                            current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+
+                                            json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
+
+                                            # Save to new location
+                                            if IS_CLOUD:
+                                                upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
+                                                # Delete old blob
+                                                bucket.blob(get_json_path(journey_to_rename)).delete()
+                                                st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
+                                            else:
+                                                (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
+                                                (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
+                                                st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
+
+                                            # If renaming the currently active journey, update session
+                                            if journey_to_rename == st.session_state.selected_json_file:
+                                                st.session_state.selected_json_file = new_filename
+                                                st.cache_data.clear()
+                                                if "data" in st.session_state:
+                                                    del st.session_state["data"]
+
+                                            st.rerun()
+
+                                        except Exception as e:
+                                            st.error(f"Rename failed: {e}")
+                                            logger.error(f"Rename error: {e}")
+                            st.session_state.selected_json_file = new_filename
+
+                            with col_cancel:
+                                st.button("❌ Cancel", type="secondary", use_container_width=True)
+            else:
+                st.warning("Please enter a new journey name.")
 
 # ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
@@ -1509,178 +1553,389 @@ with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
 
-# ==================== UPLOAD & RESTORE JSON (GCS COMPATIBLE) ====================
+# # ==================== UPLOAD & RESTORE JSON (GCS COMPATIBLE) ====================
+# with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
+#     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
+#
+#     uploaded_file = st.file_uploader(
+#         "Select a backup JSON file to restore",
+#         type=["json"],
+#         key="json_restore_uploader"
+#     )
+#
+#     if uploaded_file is not None:
+#         try:
+#             uploaded_bytes = uploaded_file.read()
+#             uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
+#
+#             if not all(key in uploaded_data for key in ["autobiography", "events"]):
+#                 st.error("Invalid backup: missing 'autobiography' or 'events' section.")
+#             elif not isinstance(uploaded_data["events"], list):
+#                 st.error("Invalid backup: 'events' must be a list.")
+#             else:
+#                 title = uploaded_data["autobiography"].get("title", uploaded_file.name.replace(".json", ""))
+#                 event_count = len(uploaded_data["events"])
+#                 st.success(f"Valid backup: **{uploaded_file.name}** — {title} ({event_count} memories)")
+#
+#                 st.warning("⚠️ This will **replace all data** in the current journey.")
+#
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
+#                         try:
+#                             # Upload directly to GCS under journeys/ with original name (or cleaned)
+#                             restore_filename = uploaded_file.name
+#                             blob_name = get_json_path(restore_filename)
+#
+#                             if IS_CLOUD:
+#                                 upload_to_gcs(uploaded_bytes, blob_name, "application/json")
+#                                 st.success(f"✅ Restored **{title}** to cloud storage!")
+#                             else:
+#                                 (BASE_DIR / restore_filename).write_bytes(uploaded_bytes)
+#                                 st.success(f"✅ Restored **{title}** locally!")
+#
+#                             # Switch to the restored journey
+#                             st.session_state.selected_json_file = restore_filename
+#
+#                             # Full reload
+#                             st.cache_data.clear()
+#                             if "data" in st.session_state:
+#                                 del st.session_state["data"]
+#                             st.session_state.force_map_refresh += 1
+#
+#                             st.rerun()
+#
+#                         except Exception as e:
+#                             st.error(f"Restore failed: {e}")
+#                             logger.error(f"Restore error: {e}")
+#                 st.session_state.current_journey_locked = is_journey_locked(uploaded_file.name)
+#
+#                 with col2:
+#                     if st.button("❌ Cancel", type="secondary", use_container_width=True, key="restore_cancel_button"):
+#                         st.info("Restore cancelled.")
+#
+#         except json.JSONDecodeError:
+#             st.error("Invalid JSON file — could not parse.")
+#         except Exception as e:
+#             st.error(f"Error reading file: {e}")
+
+# ==================== UPLOAD & RESTORE JSON (only when current journey is unlocked) ====================
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
-    st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
-
-    uploaded_file = st.file_uploader(
-        "Select a backup JSON file to restore",
-        type=["json"],
-        key="json_restore_uploader"
-    )
-
-    if uploaded_file is not None:
-        try:
-            uploaded_bytes = uploaded_file.read()
-            uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
-
-            if not all(key in uploaded_data for key in ["autobiography", "events"]):
-                st.error("Invalid backup: missing 'autobiography' or 'events' section.")
-            elif not isinstance(uploaded_data["events"], list):
-                st.error("Invalid backup: 'events' must be a list.")
-            else:
-                title = uploaded_data["autobiography"].get("title", uploaded_file.name.replace(".json", ""))
-                event_count = len(uploaded_data["events"])
-                st.success(f"Valid backup: **{uploaded_file.name}** — {title} ({event_count} memories)")
-
-                st.warning("⚠️ This will **replace all data** in the current journey.")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
-                        try:
-                            # Upload directly to GCS under journeys/ with original name (or cleaned)
-                            restore_filename = uploaded_file.name
-                            blob_name = get_json_path(restore_filename)
-
-                            if IS_CLOUD:
-                                upload_to_gcs(uploaded_bytes, blob_name, "application/json")
-                                st.success(f"✅ Restored **{title}** to cloud storage!")
-                            else:
-                                (BASE_DIR / restore_filename).write_bytes(uploaded_bytes)
-                                st.success(f"✅ Restored **{title}** locally!")
-
-                            # Switch to the restored journey
-                            st.session_state.selected_json_file = restore_filename
-
-                            # Full reload
-                            st.cache_data.clear()
-                            if "data" in st.session_state:
-                                del st.session_state["data"]
-                            st.session_state.force_map_refresh += 1
-
-                            st.rerun()
-
-                        except Exception as e:
-                            st.error(f"Restore failed: {e}")
-                            logger.error(f"Restore error: {e}")
-
-                with col2:
-                    if st.button("❌ Cancel", type="secondary", use_container_width=True, key="restore_cancel_button"):
-                        st.info("Restore cancelled.")
-
-        except json.JSONDecodeError:
-            st.error("Invalid JSON file — could not parse.")
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-
-# ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
-with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
-    st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
-
-    # Get current list of journeys (from GCS or local)
-    available_journeys = get_local_json_files()
-    available_for_deletion = [
-        f for f in available_journeys
-        if f != st.session_state.selected_json_file
-    ]
-
-    if not available_for_deletion:
-        st.info("No other journey files available to delete.")
+    if st.session_state.current_journey_locked:
+        st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
+        st.caption("Switch to an unlocked journey to use this feature.")
     else:
-        file_to_delete = st.selectbox(
-            "Select a journey to delete",
-            options=available_for_deletion,
-            help="Only inactive journeys can be deleted"
+        st.write("Restore a previously backed-up `.json` file. This will **replace** an existing journey or create it if missing.")
+
+        uploaded_file = st.file_uploader(
+            "Select a backup JSON file to restore",
+            type=["json"],
+            key="json_restore_uploader"
         )
 
-        # Load preview data
-        blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete)
-        try:
-            preview_data = load_data_from_file(blob_or_path)
-            event_count = len(preview_data.get("events", []))
-            title = preview_data.get("autobiography", {}).get("title", file_to_delete.replace(".json", ""))
-            st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
-        except:
-            st.write(f"File: `{file_to_delete}` (preview unavailable)")
+        if uploaded_file is not None:
+            try:
+                uploaded_bytes = uploaded_file.read()
+                uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
 
-        col_confirm, col_cancel = st.columns(2)
+                if not all(key in uploaded_data for key in ["autobiography", "events"]):
+                    st.error("Invalid backup: missing 'autobiography' or 'events' section.")
+                elif not isinstance(uploaded_data["events"], list):
+                    st.error("Invalid backup: 'events' must be a list.")
+                else:
+                    # ── Determine target filename ───────────────────────────────
+                    restore_filename = uploaded_file.name.strip()
+                    if not restore_filename.lower().endswith(".json"):
+                        restore_filename += ".json"
 
-        with col_confirm:
-            if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
-                try:
-                    # 1. Delete all media files (photos + videos)
-                    for event in preview_data.get("events", []):
-                        for media_type in ["photos", "videos"]:
-                            for media_url in event.get("media", {}).get(media_type, []):
-                                try:
-                                    if media_url.startswith("gs://"):
-                                        # GCS path
-                                        parts = media_url[5:].split("/", 1)
-                                        bucket_name = parts[0]
-                                        blob_path = parts[1]
-                                        storage.Client().bucket(bucket_name).blob(blob_path).delete()
-                                    else:
-                                        # Local path
-                                        Path(media_url).unlink(missing_ok=True)
-                                except Exception as e:
-                                    logger.warning(f"Failed to delete media {media_url}: {e}")
+                    title = uploaded_data["autobiography"].get("title", restore_filename.replace(".json", ""))
+                    event_count = len(uploaded_data["events"])
 
-                    # 2. Delete the journey JSON itself
-                    if IS_CLOUD:
-                        blob_name = get_json_path(file_to_delete)
-                        bucket.blob(blob_name).delete()
-                        st.success(f"✅ Journey **{file_to_delete}** deleted permanently from cloud.")
+                    st.success(f"Valid backup: **{uploaded_file.name}** — {title} ({event_count} memories)")
+
+                    # ── Check if target journey already exists and is locked ────
+                    target_locked = is_journey_locked(restore_filename)
+
+                    if target_locked:
+                        st.error(
+                            f"**Cannot restore:** The journey `{restore_filename}` is **locked** (view-only).\n\n"
+                            "Restore would overwrite a read-only journey — this is not allowed.\n"
+                            "• Unlock it first (remove the `.json_lock` file), or\n"
+                            "• Rename your backup file and try again."
+                        )
                     else:
-                        (BASE_DIR / file_to_delete).unlink()
-                        st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
+                        # Exists but unlocked, or doesn't exist → safe to proceed
+                        exists = restore_filename in get_local_json_files()
+                        if exists:
+                            st.warning(
+                                f"⚠️ This will **replace** the existing journey `{restore_filename}` "
+                                f"({event_count} memories will be overwritten)."
+                            )
+                        else:
+                            st.info(f"New journey `{restore_filename}` will be created.")
 
-                    # Refresh journey list
-                    st.rerun()
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
+                                try:
+                                    blob_name = get_json_path(restore_filename)
 
-                except Exception as e:
-                    st.error(f"Failed to delete: {e}")
-                    logger.error(f"Delete journey failed: {e}")
+                                    if IS_CLOUD:
+                                        upload_to_gcs(uploaded_bytes, blob_name, "application/json")
+                                        st.success(f"✅ Restored **{title}** to cloud storage!")
+                                    else:
+                                        (BASE_DIR / restore_filename).write_bytes(uploaded_bytes)
+                                        st.success(f"✅ Restored **{title}** locally!")
 
-        with col_cancel:
-            st.button("Cancel", type="secondary", use_container_width=True)
+                                    # Switch to the restored journey
+                                    st.session_state.selected_json_file = restore_filename
+                                    st.session_state.current_journey_locked = is_journey_locked(restore_filename)
+
+                                    # Full reload
+                                    st.cache_data.clear()
+                                    if "data" in st.session_state:
+                                        del st.session_state["data"]
+                                    st.session_state.force_map_refresh += 1
+
+                                    st.rerun()
+
+                                except Exception as e:
+                                    st.error(f"Restore failed: {e}")
+                                    logger.error(f"Restore error: {e}")
+
+                        with col2:
+                            if st.button("❌ Cancel", type="secondary", use_container_width=True, key="restore_cancel_button"):
+                                st.info("Restore cancelled.")
+
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file — could not parse.")
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
+
+
+# ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
+if not st.session_state.current_journey_locked:
+    with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
+        st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
+
+        # Get current list of journeys (from GCS or local)
+        available_journeys = get_local_json_files()
+        available_for_deletion = [
+            f for f in available_journeys
+            if f != st.session_state.selected_json_file
+        ]
+
+        if not available_for_deletion:
+            st.info("No other journey files available to delete.")
+        elif is_journey_locked(st.session_state.selected_json_file):
+            st.info("The Journey is locked and can't be deleted.")
+        else:
+            file_to_delete = st.selectbox(
+                "Select a journey to delete",
+                options=available_for_deletion,
+                help="Only inactive journeys can be deleted"
+            )
+
+            # Load preview data
+            blob_or_path = get_json_path(file_to_delete) if IS_CLOUD else str(BASE_DIR / file_to_delete)
+            try:
+                preview_data = load_data_from_file(blob_or_path)
+                event_count = len(preview_data.get("events", []))
+                title = preview_data.get("autobiography", {}).get("title", file_to_delete.replace(".json", ""))
+                st.write(f"**{title}** • {event_count} memories • File: `{file_to_delete}`")
+            except:
+                st.write(f"File: `{file_to_delete}` (preview unavailable)")
+
+            col_confirm, col_cancel = st.columns(2)
+
+            with col_confirm:
+                if st.button("🗑️ Delete Permanently", type="primary", use_container_width=True):
+                    try:
+                        # 1. Delete all media files (photos + videos)
+                        for event in preview_data.get("events", []):
+                            for media_type in ["photos", "videos"]:
+                                for media_url in event.get("media", {}).get(media_type, []):
+                                    try:
+                                        if media_url.startswith("gs://"):
+                                            # GCS path
+                                            parts = media_url[5:].split("/", 1)
+                                            bucket_name = parts[0]
+                                            blob_path = parts[1]
+                                            storage.Client().bucket(bucket_name).blob(blob_path).delete()
+                                        else:
+                                            # Local path
+                                            Path(media_url).unlink(missing_ok=True)
+                                    except Exception as e:
+                                        logger.warning(f"Failed to delete media {media_url}: {e}")
+
+                        # 2. Delete the journey JSON itself
+                        if IS_CLOUD:
+                            blob_name = get_json_path(file_to_delete)
+                            bucket.blob(blob_name).delete()
+                            st.success(f"✅ Journey **{file_to_delete}** deleted permanently from cloud.")
+                        else:
+                            (BASE_DIR / file_to_delete).unlink()
+                            st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
+
+                        # Refresh journey list
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to delete: {e}")
+                        logger.error(f"Delete journey failed: {e}")
+
+            with col_cancel:
+                st.button("Cancel", type="secondary", use_container_width=True)
 
 # st.sidebar.markdown("---")
 # st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 event_count = len(st.session_state.data.get("events", []))
 place_text = "memory" if event_count == 1 else "memories"
 
+
+locked = st.session_state.get("current_journey_locked", False)
+
+lock_emoji = "🔒" if st.session_state.current_journey_locked else "✏️"
+#st.sidebar.markdown(f"**Current Journey** {lock_emoji}")
+
 #st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
-st.sidebar.subheader(f"🗺️ Selected Journey")
-# ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
-# Create a single row with label and radio buttons
-col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
+#st.sidebar.subheader(f"🗺️ Selected Journey {lock_emoji}")
 
-with col_label:
-    pass
-    # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
-    # The padding-top aligns it vertically with the radio buttons
+#st.sidebar.subheader(f"🗺️ Selected Journey")
 
-with col_radio:
+# Near the top of sidebar — after showing current journey name & count
+locked = st.session_state.current_journey_locked
 
-    mode = st.sidebar.radio(
-        label="App mode",                  # Hidden or visible as needed
-        options=["👁️ View Mode", "✏️ Edit Mode"],
-        captions=["Explore Journey", "Add Memories"],
-        index=0 if st.session_state.app_mode == "View Mode" else 1,
-        horizontal=True,
-        label_visibility="collapsed",      # Hide the main label since we have markdown above
-        key="mode_radio"
-    )
-# Clean the returned value (remove emoji for clean comparison/storage)
-clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
+# if locked:
+#     st.sidebar.warning("🔒 This journey is **locked** (view-only)")
+#     st.sidebar.caption("Editing is disabled for this file.")
+# else:
+#     st.sidebar.success("✏️ This journey is **editable**")
+#     # Optional: show small lock button
+#     if st.sidebar.button("Lock this journey", type="secondary", help="Prevent future edits", use_container_width=True):
+#         if IS_CLOUD:
+#             bucket.blob(f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock").upload_from_string(b"locked")
+#         else:
+#             (BASE_DIR / f"{st.session_state.selected_json_file}_lock").write_text("locked")
+#         st.session_state.current_journey_locked = True
+#         st.success("Journey locked!")
+#         st.rerun()
+#
+#     # Optional: unlock button (only shown to admin/owner — or always for simplicity)
+#     # if st.sidebar.button("Unlock this journey", type="secondary"):
+#     #     ... delete lock file/blob ...
 
-if clean_mode != st.session_state.app_mode:
-    st.session_state.app_mode = clean_mode
-    st.rerun()
+# ############# another  Journey Lock / Unlock format #####################
+#
+# locked = st.session_state.get("current_journey_locked")
+#
+# st.sidebar.markdown(
+#     f"**Current Journey**    "
+#     f"{'🔒 **Locked**' if locked else '✏️ **Editable**'}"
+# )
+#
+# # Button directly below
+# btn_label = "🔓 Unlock" if locked else "🔒 Lock"
+# btn_type  = "primary" if locked else "secondary"
+#
+# if st.sidebar.button(btn_label, type=btn_type, use_container_width=True):
+#     # same lock/unlock logic as above
+#     ...
+#     st.rerun()
+
+# ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
+#st.sidebar.markdown("### Journey Status")
+
+locked = st.session_state.get("current_journey_locked", False)
+
+if locked:
+    st.session_state.add_new_memory = False
+    st.sidebar.subheader(f"🗺️ Selected Journey")
+    st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+    #st.sidebar.warning("🔒 **Locked** (view-only mode)")
+   # st.sidebar.caption("No editing, adding or deleting is allowed in this journey.")
+
+    if st.sidebar.button("🔓 Edit this journey", type="primary", use_container_width=True):
+        try:
+            if IS_CLOUD:
+                lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
+                bucket.blob(lock_blob_name).delete()
+                logger.info(f"Deleted lock blob: {lock_blob_name}")
+            else:
+                lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
+                if lock_path.exists():
+                    lock_path.unlink()
+                    logger.info(f"Deleted local lock file: {lock_path}")
+
+            st.session_state.current_journey_locked = False
+            st.success("✅ Journey is now **unlocked** and editable again!")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Failed to unlock journey: {e}")
+            logger.error(f"Unlock failed: {e}")
+
+else:
+    st.session_state.add_new_memory = True
+    st.sidebar.subheader(f"🗺️ Selected Journey (Edit Mode)")
+    st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+    #st.sidebar.success("✏️ **Editable**")
+    #st.sidebar.caption("You can add, edit and delete memories in this journey.")
+
+    if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
+        try:
+            lock_content = datetime.now().isoformat().encode("utf-8")  # optional timestamp
+
+            if IS_CLOUD:
+                lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
+                bucket.blob(lock_blob_name).upload_from_string(lock_content, content_type="text/plain")
+                logger.info(f"Created lock blob: {lock_blob_name}")
+            else:
+                lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
+                lock_path.write_bytes(lock_content)
+                logger.info(f"Created local lock file: {lock_path}")
+
+            st.session_state.current_journey_locked = True
+            st.success("🔒 Journey is now **locked** (view-only)")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Failed to lock journey: {e}")
+            logger.error(f"Lock failed: {e}")
 
 
-st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+
+
+#
+# # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
+# # Create a single row with label and radio buttons
+# col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
+#
+# with col_label:
+#     pass
+#     # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
+#     # The padding-top aligns it vertically with the radio buttons
+#
+# with col_radio:
+#
+#     mode = st.sidebar.radio(
+#         label="App mode",                  # Hidden or visible as needed
+#         options=["👁️ View Mode", "✏️ Edit Mode"],
+#         captions=["Explore Journey", "Add Memories"],
+#         index=0 if st.session_state.app_mode == "View Mode" else 1,
+#         horizontal=True,
+#         label_visibility="collapsed",      # Hide the main label since we have markdown above
+#         key="mode_radio"
+#     )
+# # Clean the returned value (remove emoji for clean comparison/storage)
+# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
+#
+# if clean_mode != st.session_state.app_mode:
+#     st.session_state.app_mode = clean_mode
+#     st.rerun()
+#
+
+#st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 for idx, event in enumerate(sorted_events, start=1):
@@ -1692,18 +1947,19 @@ for idx, event in enumerate(sorted_events, start=1):
         for v in event["media"].get("videos", [])[:1]:
             if os.path.exists(v):
                 st.video(v)
-
-        # Edit and Delete buttons side by side
-        col_edit, col_delete = st.columns([2, 1])
-        with col_edit:
-            if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
-                st.session_state.editing_event_id = event["id"]
-                st.rerun()
-        with col_delete:
-            if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
-                st.session_state.confirm_delete_id = event["id"]
-                st.rerun()
-
+        if not st.session_state.current_journey_locked:
+            # Edit and Delete buttons side by side
+            col_edit, col_delete = st.columns([2, 1])
+            with col_edit:
+                if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
+                    st.session_state.editing_event_id = event["id"]
+                    st.rerun()
+            with col_delete:
+                if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
+                    st.session_state.confirm_delete_id = event["id"]
+                    st.rerun()
+        else:
+            st.caption("View-only mode (locked)")
 # Confirmation dialog for deletion
 if "confirm_delete_id" in st.session_state:
     delete_event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.confirm_delete_id),
