@@ -138,6 +138,41 @@ if "add_new_memory" not in st.session_state:
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
 
+# ──────────────────────────────────────────────────────────────
+#          TEMP BYPASS – Google login is broken right now
+# ──────────────────────────────────────────────────────────────
+
+# Force login for everyone (temporary dev workaround)
+if True:  # ← change to False when you fix real auth
+    if "bypass_auth" not in st.session_state:
+        st.session_state.bypass_auth = True
+        st.session_state.user_info = {
+            "name": "Test User 🔥",
+            "email": "test@example.com",
+            "sub": "bypass-20260119",
+        }
+
+    class FakeUser:
+        is_logged_in = True
+        name = st.session_state.user_info["name"]
+        email = st.session_state.user_info["email"]
+        sub = st.session_state.user_info["sub"]
+
+    st.user = FakeUser()
+
+    # Show warning banner so you don't forget
+    st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
+
+else:
+    # Original real authentication code (commented out for now)
+    if not st.user.is_logged_in:
+        st.set_page_config(page_title="Please Sign In", layout="wide")
+        st.title("🌍 Journey Journal")
+        st.markdown("Sign in to continue")
+        if st.button("Sign in with Google", type="primary"):
+            st.login("google")
+        st.stop()
+
 # ==================== DEVICE DETECTION ====================
 if "device_type" not in st.session_state:
     detect_js = """
