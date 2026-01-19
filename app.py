@@ -161,7 +161,7 @@ if True:  # ← change to False when you fix real auth
     st.user = FakeUser()
 
     # Show warning banner so you don't forget
-    st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
+    #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
 
 else:
     # Original real authentication code (commented out for now)
