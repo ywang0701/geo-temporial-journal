@@ -19,6 +19,7 @@ import argparse
 import os
 from google.cloud import storage
 from google.oauth2 import service_account
+import simplekml
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -252,6 +253,83 @@ def is_journey_locked(json_filename):
         return lock_path.exists()
 
 
+import simplekml
+from datetime import datetime
+
+def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
+    """
+    Creates KML with:
+    - Placemarks for each memory (with title, date, description)
+    - One continuous LineString for the journey path
+    - TimeStamp on each placemark → enables timeline animation in Google Earth
+    """
+    kml = simplekml.Kml(name="My Journey with Timeline", open=1)
+
+    # Sort events by date (safety)
+    sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+
+    path_coords = []
+
+    # Nice style for the path (always visible)
+    journey_line = kml.newlinestring(name="Journey Path")
+    journey_line.style.linestyle.color = simplekml.Color.teal  # or simplekml.Color.hex("50E3C2")
+    journey_line.style.linestyle.width = 5
+    journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
+
+    for idx, event in enumerate(sorted_events, 1):
+        try:
+            lat = float(event["location"]["latitude"])
+            lon = float(event["location"]["longitude"])
+            coord = (lon, lat)  # KML: longitude first!
+            path_coords.append(coord)
+
+            title = event.get("title", f"Memory #{idx}")
+            date_str = event.get("date", None)
+            desc = event.get("description", "No description")
+
+            popup_html = f"""
+            <h3 style="margin:0 0 8px 0;">{title}</h3>
+            <p style="color:#555; margin:4px 0;"><b>Date:</b> {date_str or 'Unknown'}</p>
+            <p style="margin:8px 0 12px 0;">{desc}</p>
+            """
+
+            photos = len(event["media"].get("photos", []))
+            videos = len(event["media"].get("videos", []))
+            if photos or videos:
+                popup_html += f'<p style="color:#666;font-style:italic;">{photos} photo(s) • {videos} video(s)</p>'
+
+            # Create placemark
+            pnt = kml.newpoint(
+                name=f"{idx}. {date_str or 'Unknown'} – {title}",
+                description=popup_html,
+                coords=[coord]
+            )
+
+            # Icon
+            pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
+            pnt.style.iconstyle.scale = 1.1
+
+            # ── KEY PART: Add TimeStamp for timeline animation ──
+            if date_str:
+                try:
+                    # Parse your date (YYYY-MM-DD) and set a default time (noon UTC)
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    # Format as ISO 8601: yyyy-mm-ddThh:mm:ssZ (Z = UTC)
+                    iso_time = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
+                    pnt.timestamp.when = iso_time
+                except ValueError:
+                    # If date parsing fails, skip timestamp (still usable)
+                    pass
+
+        except (KeyError, ValueError, TypeError):
+            continue
+
+    # Add connecting path (always visible)
+    if len(path_coords) >= 2:
+        journey_line.coords = path_coords
+
+    kml.save(output_filename)
+    return output_filename
 
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
@@ -570,63 +648,6 @@ def get_color_by_year(d):
     else:
         return "red"
 
-
-# # ==================== POPUP ====================
-# def build_popup_html(event):
-#     title = html.escape(event.get('title', 'Untitled'))
-#     desc = html.escape(event.get('description', '') or 'No description')
-#     loc = html.escape(event['location']['name'])
-#
-#     popup = f"""
-#     <div style="width:380px;max-height:550px;overflow-y:auto;padding:8px;font-family:sans-serif;">
-#         <h3 style="text-align:center;margin:0 0 8px 0;">{title}</h3>
-#         <p style="text-align:center;color:#555;margin:0 0 10px 0;">{event['date']} • {loc}</p>
-#         <p style="line-height:1.4;margin-bottom:15px;">{desc}</p>
-#         <hr style="margin:15px 0;">
-#     """
-#
-#     photos = event["media"].get("photos", [])
-#     videos = event["media"].get("videos", [])
-#
-#     # if photos:
-#     #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
-#     #     for p in photos:
-#     #         b64 = get_image_base64(p)
-#     #         fn = os.path.basename(p)
-#     #         if b64:
-#     #             dl = f"data:image/jpeg;base64,{b64}"
-#     #             popup += f"""
-#     #             <div style="text-align:center;">
-#     #                 <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
-#     #                      onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
-#     #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-#     #             </div>
-#     #             """
-#     #     popup += "</div>"
-#     #
-#     # if videos:
-#     #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
-#     #     for v in videos:
-#     #         b64 = get_video_base64(v)
-#     #         fn = os.path.basename(v)
-#     #         if b64:
-#     #             dl = f"data:video/mp4;base64,{b64}"
-#     #             popup += f"""
-#     #             <div style="text-align:center;">
-#     #                 <video controls style="max-width:100%;border-radius:8px;">
-#     #                     <source src="{dl}" type="video/mp4">
-#     #                 </video>
-#     #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-#     #             </div>
-#     #             """
-#     #     popup += "</div>"
-#     popup += f"<p><em>{len(photos)} photo(s), {len(videos)} video(s)</em></p>"
-#
-#     if not photos and not videos:
-#         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
-#
-#     popup += "</div>"
-#     return popup
 
 # ==================== POPUP ====================
 def build_popup_html(event):
@@ -995,25 +1016,6 @@ if not st.user.is_logged_in:
     #st.title("🌍 Journey Journal")
     st.title("🌍 Welcome Visitors 🌍")
     #st.markdown("Sign in to view or edit your personal journeys.")
-
-    # ── Choose your preferred provider(s) ───────────────────────────────
-    # col1, col2, col3 = st.columns(3)
-    #
-    # with col1:
-    #     if st.button("Sign in with Google", use_container_width=True, type="primary"):
-    #         st.login("google")
-
-    # with col2:
-    #     if st.button("Sign in with Microsoft", use_container_width=True):
-    #         st.login("microsoft-entra-id")   # or "microsoft" depending on exact provider name
-    #
-    # with col3:
-    #     if st.button("Sign in with GitHub", use_container_width=True):
-    #         st.login("github")
-    #
-    # Optional: more providers or custom text
-    # st.caption("🔒 Secure login powered by OpenID Connect")
-    # st.stop()  # ← Critical: stop execution until user is authenticated
 
 # ──────────────────────────────────────────────────────────────
 #          User is now logged in → show app + user info
@@ -1709,72 +1711,75 @@ with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
             st.error("Could not load journey data for download.")
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
+# ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
+with st.sidebar.expander("🌍 Download Journey as KML", expanded=False):
+    st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
 
-# # ==================== UPLOAD & RESTORE JSON (GCS COMPATIBLE) ====================
-# with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
-#     st.write("Restore a previously backed-up `.json` file. This will **replace** the current journey's data.")
-#
-#     uploaded_file = st.file_uploader(
-#         "Select a backup JSON file to restore",
-#         type=["json"],
-#         key="json_restore_uploader"
-#     )
-#
-#     if uploaded_file is not None:
-#         try:
-#             uploaded_bytes = uploaded_file.read()
-#             uploaded_data = json.loads(uploaded_bytes.decode("utf-8"))
-#
-#             if not all(key in uploaded_data for key in ["autobiography", "events"]):
-#                 st.error("Invalid backup: missing 'autobiography' or 'events' section.")
-#             elif not isinstance(uploaded_data["events"], list):
-#                 st.error("Invalid backup: 'events' must be a list.")
-#             else:
-#                 title = uploaded_data["autobiography"].get("title", uploaded_file.name.replace(".json", ""))
-#                 event_count = len(uploaded_data["events"])
-#                 st.success(f"Valid backup: **{uploaded_file.name}** — {title} ({event_count} memories)")
-#
-#                 st.warning("⚠️ This will **replace all data** in the current journey.")
-#
-#                 col1, col2 = st.columns(2)
-#                 with col1:
-#                     if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
-#                         try:
-#                             # Upload directly to GCS under journeys/ with original name (or cleaned)
-#                             restore_filename = uploaded_file.name
-#                             blob_name = get_json_path(restore_filename)
-#
-#                             if IS_CLOUD:
-#                                 upload_to_gcs(uploaded_bytes, blob_name, "application/json")
-#                                 st.success(f"✅ Restored **{title}** to cloud storage!")
-#                             else:
-#                                 (BASE_DIR / restore_filename).write_bytes(uploaded_bytes)
-#                                 st.success(f"✅ Restored **{title}** locally!")
-#
-#                             # Switch to the restored journey
-#                             st.session_state.selected_json_file = restore_filename
-#
-#                             # Full reload
-#                             st.cache_data.clear()
-#                             if "data" in st.session_state:
-#                                 del st.session_state["data"]
-#                             st.session_state.force_map_refresh += 1
-#
-#                             st.rerun()
-#
-#                         except Exception as e:
-#                             st.error(f"Restore failed: {e}")
-#                             logger.error(f"Restore error: {e}")
-#                 st.session_state.current_journey_locked = is_journey_locked(uploaded_file.name)
-#
-#                 with col2:
-#                     if st.button("❌ Cancel", type="secondary", use_container_width=True, key="restore_cancel_button"):
-#                         st.info("Restore cancelled.")
-#
-#         except json.JSONDecodeError:
-#             st.error("Invalid JSON file — could not parse.")
-#         except Exception as e:
-#             st.error(f"Error reading file: {e}")
+    available_journeys = get_local_json_files()
+
+    if not available_journeys:
+        st.info("No journeys available to download.")
+    else:
+        # Dropdown to select which journey to export as KML
+        journey_to_kml = st.selectbox(
+            "Choose a journey to export as KML",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            help="All journeys are listed, including the current one",
+            key="kml_select_journey"  # unique key so it doesn't conflict with others
+        )
+
+        if journey_to_kml:
+            # Load the selected journey data safely
+            try:
+                blob_or_path = get_json_path(journey_to_kml) if IS_CLOUD else str(BASE_DIR / journey_to_kml)
+                temp_data = load_data_from_file(blob_or_path)
+
+                title = temp_data.get("autobiography", {}).get("title", journey_to_kml.replace(".json", ""))
+                title_display = " ".join(
+                    word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
+                event_count = len(temp_data.get("events", []))
+
+                is_current = journey_to_kml == st.session_state.selected_json_file
+                current_label = " (current)" if is_current else ""
+                st.markdown(f"**{title_display}{current_label}**")
+                st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} will be exported from `{journey_to_kml}`")
+                # st.caption(f"Will export **{event_count}** location{'s' if event_count != 1 else ''}")
+
+                if event_count == 0:
+                    st.info("This journey has no memories yet — KML will be empty.")
+                else:
+                    # Generate filename based on **selected** journey
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+                    base_name = journey_to_kml.replace(".json", "")
+                    kml_filename = f"{base_name}_journey_{timestamp}.kml"
+
+                    # Create KML file (using your existing function)
+                    export_to_kml(temp_data["events"], kml_filename)
+
+                    # Read the file for download
+                    with open(kml_filename, "rb") as f:
+                        st.download_button(
+                            label="⬇️ Download KML Now",
+                            data=f,
+                            file_name=kml_filename,  # ← now uses selected journey name
+                            mime="application/vnd.google-earth.kml+xml",
+                            use_container_width=True,
+                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                        )
+
+                    st.markdown("""
+                    **How to open:**
+                    1. Go to https://www.google.com/mymaps
+                    2. Create a new map
+                    3. Click **Import** → choose the downloaded .kml file
+                    4. See your journey with points and connecting path!
+                    """)
+
+            except Exception as e:
+                st.error(f"Could not load or export {journey_to_kml}: {str(e)}")
+                logger.error(f"KML export error for {journey_to_kml}: {e}")
+
 
 # ==================== UPLOAD & RESTORE JSON (only when current journey is unlocked) ====================
 with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
@@ -2246,54 +2251,3 @@ else:
                 st.session_state.force_map_refresh += 1
                 st.rerun()
 
-
-# # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
-# # Create a single row with label and radio buttons
-# col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
-#
-# with col_label:
-#     pass
-#     # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
-#     # The padding-top aligns it vertically with the radio buttons
-#
-# with col_radio:
-#
-#     mode = st.sidebar.radio(
-#         label="App mode",                  # Hidden or visible as needed
-#         options=["👁️ View Mode", "✏️ Edit Mode"],
-#         index=0 if st.session_state.app_mode == "View Mode" else 1,
-#         horizontal=True,
-#         label_visibility="collapsed",      # Hide the main label since we have markdown above
-#         key="mode_radio"
-#     )
-# # Clean the returned value (remove emoji for clean comparison/storage)
-# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
-#
-# if clean_mode != st.session_state.app_mode:
-#     st.session_state.app_mode = clean_mode
-#     st.rerun()
-#
-# st.sidebar.markdown("---")
-# st.sidebar.subheader("🛠️ App Mode")
-#
-# if st.session_state.app_mode == "View Mode":
-#     if st.sidebar.button("✏️ Enter Edit Mode", use_container_width=True, type="primary"):
-#         st.session_state.app_mode = "Edit Mode"
-#         st.rerun()
-# else:
-#     st.sidebar.success("✅ **Edit Mode Active**")
-#     st.sidebar.info("Click map to add • Use list to edit/delete")
-#     if st.sidebar.button("👁️ Exit Edit Mode", use_container_width=True):
-#         st.session_state.app_mode = "View Mode"
-#         st.rerun()
-#
-# # Clean the returned value (remove emoji for clean comparison/storage)
-# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
-#
-#
-# if clean_mode != st.session_state.app_mode:
-#     st.session_state.app_mode = clean_mode
-#     st.rerun()
-
-
-# st.sidebar.markdown("---")
