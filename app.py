@@ -1199,6 +1199,10 @@ if map_data and map_data.get("center"):
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
 # ==================== ADD NEW MEMORY ====================
+# Safety: only allow one mode at a time
+if st.session_state.editing_event_id and st.session_state.add_new_memory:
+    st.session_state.add_new_memory = False  # editing takes priority
+
 #if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
 if not st.session_state.current_journey_locked and st.session_state.add_new_memory and map_data and map_data.get("last_clicked"):
     click = map_data["last_clicked"]
