@@ -2033,7 +2033,8 @@ if st.user.is_logged_in:
     else:
         st.session_state.add_new_memory = True
         st.sidebar.subheader(f"🗺️ Selected Journey (Edit Mode)")
-        st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+        st.sidebar.markdown(f"{st.session_state.selected_json_file} {timeline_info}")
+        #st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
         #st.sidebar.success("✏️ **Editable**")
         #st.sidebar.caption("You can add, edit and delete memories in this journey.")
 
