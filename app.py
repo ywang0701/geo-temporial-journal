@@ -942,6 +942,16 @@ if not st.user.is_logged_in:
     if st.sidebar.button("Sign in with Google", type="primary"):
         st.login("google")
 
+    ## Google debug
+    st.write("--- DEBUG LOGIN STATUS ---")
+    st.write("st.user.is_logged_in       =", st.user.is_logged_in)
+    st.write("st.user (full object)      =", dict(st.user) if st.user else "None")
+    st.write("st.experimental_user       =", st.experimental_user)
+    st.write("Session state has user?    =", "user" in st.session_state)
+    if st.user.is_logged_in:
+        st.success(f"Logged in as {st.user.name} ({st.user.email})")
+    else:
+        st.info("Not logged in yet")
     st.set_page_config(page_title="Journey Journal – Sign in", layout="wide")
 
     #st.title("🌍 Journey Journal")
