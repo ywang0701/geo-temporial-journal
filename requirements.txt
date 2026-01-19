@@ -7,3 +7,4 @@ google-auth
 google
 flask
 st-copy-to-clipboard
+Authlib==1.6.5
