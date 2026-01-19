@@ -1974,26 +1974,25 @@ if locked:
     #st.sidebar.warning("🔒 **Locked** (view-only mode)")
    # st.sidebar.caption("No editing, adding or deleting is allowed in this journey.")
 
-    if st.user.logged_in:
-        if st.sidebar.button("🔓 Edit this journey", type="primary", use_container_width=True):
-            try:
-                if IS_CLOUD:
-                    lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
-                    bucket.blob(lock_blob_name).delete()
-                    logger.info(f"Deleted lock blob: {lock_blob_name}")
-                else:
-                    lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
-                    if lock_path.exists():
-                        lock_path.unlink()
-                        logger.info(f"Deleted local lock file: {lock_path}")
+    if st.sidebar.button("🔓 Edit this journey", type="primary", use_container_width=True):
+        try:
+            if IS_CLOUD:
+                lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
+                bucket.blob(lock_blob_name).delete()
+                logger.info(f"Deleted lock blob: {lock_blob_name}")
+            else:
+                lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
+                if lock_path.exists():
+                    lock_path.unlink()
+                    logger.info(f"Deleted local lock file: {lock_path}")
 
-                st.session_state.current_journey_locked = False
-                st.success("✅ Journey is now **unlocked** and editable again!")
-                st.rerun()
+            st.session_state.current_journey_locked = False
+            st.success("✅ Journey is now **unlocked** and editable again!")
+            st.rerun()
 
-            except Exception as e:
-                st.error(f"Failed to unlock journey: {e}")
-                logger.error(f"Unlock failed: {e}")
+        except Exception as e:
+            st.error(f"Failed to unlock journey: {e}")
+            logger.error(f"Unlock failed: {e}")
 
 else:
     st.session_state.add_new_memory = True
