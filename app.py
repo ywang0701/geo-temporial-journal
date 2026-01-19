@@ -1965,65 +1965,69 @@ locked = st.session_state.current_journey_locked
 # ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
 #st.sidebar.markdown("### Journey Status")
 
-locked = st.session_state.get("current_journey_locked", False)
+if st.user.is_logged_in:
 
-if locked:
-    st.session_state.add_new_memory = False
-    st.sidebar.subheader(f"🗺️ Selected Journey")
-    st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
-    #st.sidebar.warning("🔒 **Locked** (view-only mode)")
-   # st.sidebar.caption("No editing, adding or deleting is allowed in this journey.")
+    locked = st.session_state.get("current_journey_locked", False)
+    if locked:
+        st.session_state.add_new_memory = False
+        st.sidebar.subheader(f"🗺️ Selected Journey")
+        st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+        #st.sidebar.warning("🔒 **Locked** (view-only mode)")
+       # st.sidebar.caption("No editing, adding or deleting is allowed in this journey.")
 
-    if st.sidebar.button("🔓 Edit this journey", type="primary", use_container_width=True):
-        try:
-            if IS_CLOUD:
-                lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
-                bucket.blob(lock_blob_name).delete()
-                logger.info(f"Deleted lock blob: {lock_blob_name}")
-            else:
-                lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
-                if lock_path.exists():
-                    lock_path.unlink()
-                    logger.info(f"Deleted local lock file: {lock_path}")
+        if st.sidebar.button("🔓 Edit this journey", type="primary", use_container_width=True):
+            try:
+                if IS_CLOUD:
+                    lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
+                    bucket.blob(lock_blob_name).delete()
+                    logger.info(f"Deleted lock blob: {lock_blob_name}")
+                else:
+                    lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
+                    if lock_path.exists():
+                        lock_path.unlink()
+                        logger.info(f"Deleted local lock file: {lock_path}")
 
-            st.session_state.current_journey_locked = False
-            st.success("✅ Journey is now **unlocked** and editable again!")
-            st.rerun()
+                st.session_state.current_journey_locked = False
+                st.success("✅ Journey is now **unlocked** and editable again!")
+                st.rerun()
 
-        except Exception as e:
-            st.error(f"Failed to unlock journey: {e}")
-            logger.error(f"Unlock failed: {e}")
+            except Exception as e:
+                st.error(f"Failed to unlock journey: {e}")
+                logger.error(f"Unlock failed: {e}")
+
+    else:
+        st.session_state.add_new_memory = True
+        st.sidebar.subheader(f"🗺️ Selected Journey (Edit Mode)")
+        st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+        #st.sidebar.success("✏️ **Editable**")
+        #st.sidebar.caption("You can add, edit and delete memories in this journey.")
+
+        if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
+            try:
+                lock_content = datetime.now().isoformat().encode("utf-8")  # optional timestamp
+
+                if IS_CLOUD:
+                    lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
+                    bucket.blob(lock_blob_name).upload_from_string(lock_content, content_type="text/plain")
+                    logger.info(f"Created lock blob: {lock_blob_name}")
+                else:
+                    lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
+                    lock_path.write_bytes(lock_content)
+                    logger.info(f"Created local lock file: {lock_path}")
+
+                st.session_state.current_journey_locked = True
+                st.success("🔒 Journey is now **locked** (view-only)")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Failed to lock journey: {e}")
+                logger.error(f"Lock failed: {e}")
 
 else:
-    st.session_state.add_new_memory = True
-    st.sidebar.subheader(f"🗺️ Selected Journey (Edit Mode)")
+    # Not logged in → show minimal / read-only info
+    st.sidebar.subheader("🗺️ Selected Journey")
     st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
-    #st.sidebar.success("✏️ **Editable**")
-    #st.sidebar.caption("You can add, edit and delete memories in this journey.")
-
-    if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
-        try:
-            lock_content = datetime.now().isoformat().encode("utf-8")  # optional timestamp
-
-            if IS_CLOUD:
-                lock_blob_name = f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock"
-                bucket.blob(lock_blob_name).upload_from_string(lock_content, content_type="text/plain")
-                logger.info(f"Created lock blob: {lock_blob_name}")
-            else:
-                lock_path = BASE_DIR / f"{st.session_state.selected_json_file}_lock"
-                lock_path.write_bytes(lock_content)
-                logger.info(f"Created local lock file: {lock_path}")
-
-            st.session_state.current_journey_locked = True
-            st.success("🔒 Journey is now **locked** (view-only)")
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Failed to lock journey: {e}")
-            logger.error(f"Lock failed: {e}")
-
-
-
+    st.sidebar.caption("Sign in to edit or lock this journey")
 
 #
 # # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
