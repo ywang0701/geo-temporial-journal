@@ -476,7 +476,8 @@ if data["events"]:
         start_year = min(dates).year
         end_year = max(dates).year
         timeline_info = f" ({start_year} – {end_year})"
-
+        timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
+            "events"] else ""
 # ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
 json_filename = JSON_FILE.name
 if st.session_state.selected_json_file:
@@ -493,6 +494,8 @@ if data["events"]:
     start_year = min(dates).year
     end_year = max(dates).year
     timeline_info = f" ({start_year}–{end_year})"
+    timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
+        "events"] else ""
 else:
     timeline_info = ""
 
@@ -2002,7 +2005,8 @@ if st.user.is_logged_in:
     if locked:
         st.session_state.add_new_memory = False
         st.sidebar.subheader(f"🗺️ Selected Journey")
-        st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
+        st.sidebar.markdown(f"{st.session_state.selected_json_file} {timeline_info}")
+        #st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
         #st.sidebar.warning("🔒 **Locked** (view-only mode)")
        # st.sidebar.caption("No editing, adding or deleting is allowed in this journey.")
 
