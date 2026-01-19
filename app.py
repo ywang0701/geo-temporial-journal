@@ -21,7 +21,7 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
-ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
+#ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
