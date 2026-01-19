@@ -21,7 +21,7 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
-key = st.secrets.clerk.publishable_key
+ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -286,13 +286,32 @@ else:
     # Normal case: journeys exist
     pass
 
+# def is_journey_locked(json_filename):
+#     if IS_CLOUD:
+#         lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
+#         return lock_blob.exists()
+#     else:
+#         lock_path = BASE_DIR / f"{json_filename}_lock"
+#         return lock_path.exists()
+#
+
 def is_journey_locked(json_filename):
+    if not st.user.is_logged_in:
+        logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
+        return True
+
+    # User is logged in → proceed to check file-based lock
     if IS_CLOUD:
-        lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
-        return lock_blob.exists()
+        lock_blob_name = f"{JOURNEYS_FOLDER}/{json_filename}_lock"
+        lock_exists = bucket.blob(lock_blob_name).exists()
+        logger.debug(f"Cloud lock check for '{json_filename}': {lock_exists}")
+        return lock_exists
     else:
         lock_path = BASE_DIR / f"{json_filename}_lock"
-        return lock_path.exists()
+        lock_exists = lock_path.exists()
+        logger.debug(f"Local lock check for '{json_filename}': {lock_exists}")
+        return lock_exists
+
 
 # Right after st.session_state.selected_json_file = json_name
 st.session_state.current_journey_locked = is_journey_locked(st.session_state.selected_json_file)
@@ -444,14 +463,16 @@ else:
 
 # Updated title: includes filename and count
 event_count = len(st.session_state.data.get("events", []))
-place_text = "place" if event_count == 1 else "places"
+place_text = "memory" if event_count == 1 else "memories"
+memory_count_str = f"{event_count} {place_text}" if event_count > 0 else "no memory  yet"
 
-full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
+#full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
+full_title = f"🌍 Journey ({display_name}) – {memory_count_str}{timeline_info}"
 
 st.set_page_config(
-    page_title=full_title,
-    layout="wide",
-    initial_sidebar_state=initial_sidebar
+   page_title=full_title,
+   layout="wide",
+   initial_sidebar_state=initial_sidebar
 )
 
 #st.title(full_title)
@@ -906,30 +927,91 @@ st.set_page_config(
 
 #========================== Login Session ===========================
 
-import os
-import streamlit as st
+# ──────────────────────────────────────────────────────────────
+#          Authentication Guard – runs before anything else
+# ──────────────────────────────────────────────────────────────
 
-CLERK_PUBLISHABLE_KEY = (
-    st.secrets["clerk"]["publishable_key"]
-    if "clerk" in st.secrets
-    else os.getenv("CLERK_PUBLISHABLE_KEY")
-)
+# Optional: you can force re-login every time (good for testing)
+# But usually you want session persistence via cookie → comment out
+# if "force_reauth" not in st.session_state:
+#     st.session_state.force_reauth = False
 
-if not CLERK_PUBLISHABLE_KEY:
-    st.error("Clerk Publishable Key is missing")
-    st.stop()
+if not st.user.is_logged_in:
+    st.sidebar.title("Hello Visitor")
+    st.sidebar.markdown("Sign in to view or edit your personal journeys.")
+    if st.sidebar.button("Sign in with Google", type="primary"):
+        st.login("google")
 
-# Now safely use it in the JavaScript
-clerk_auth_html = f"""
-<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script>
-<script>
-    const clerk = new Clerk("{CLERK_PUBLISHABLE_KEY}");
-    // ...
-</script>
-"""
+    st.set_page_config(page_title="Journey Journal – Sign in", layout="wide")
 
-st.markdown( f" CLERK {CLERK_PUBLISHABLE_KEY}")
+    #st.title("🌍 Journey Journal")
+    st.title("🌍 Welcome Visitors 🌍")
+    #st.markdown("Sign in to view or edit your personal journeys.")
 
+    # ── Choose your preferred provider(s) ───────────────────────────────
+    # col1, col2, col3 = st.columns(3)
+    #
+    # with col1:
+    #     if st.button("Sign in with Google", use_container_width=True, type="primary"):
+    #         st.login("google")
+
+    # with col2:
+    #     if st.button("Sign in with Microsoft", use_container_width=True):
+    #         st.login("microsoft-entra-id")   # or "microsoft" depending on exact provider name
+    #
+    # with col3:
+    #     if st.button("Sign in with GitHub", use_container_width=True):
+    #         st.login("github")
+    #
+    # Optional: more providers or custom text
+    # st.caption("🔒 Secure login powered by OpenID Connect")
+    # st.stop()  # ← Critical: stop execution until user is authenticated
+
+# ──────────────────────────────────────────────────────────────
+#          User is now logged in → show app + user info
+# ──────────────────────────────────────────────────────────────
+if st.user.is_logged_in:
+# Optional: show who is logged in (very useful)
+    st.sidebar.title(f"Hello 🙍 {st.user.name}")
+    #st.sidebar.markdown(f"**👤 Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
+    #st.sidebar.caption(f"Logged in • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    st.sidebar.markdown(f"** Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
+
+# if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
+
+    if st.sidebar.button("🙋️ Sign out", type="secondary", use_container_width=True):
+        st.logout()
+        # st.user.is_logged_in = False
+        st.rerun()
+
+    # ── Optional: store user info in session state if you need it later ──
+    if "user_info" not in st.session_state:
+        st.session_state.user_info = {
+            "email": st.user.email,
+            "name": st.user.name,
+            "id": st.user.sub,           # subject = unique user ID
+            "provider": st.user.iss,     # issuer
+            "last_login": datetime.now().isoformat()
+        }
+
+    # ──────────────────────────────────────────────────────────────
+    #          Your NORMAL application code starts here
+    # ──────────────────────────────────────────────────────────────
+
+    #st.title(f"Welcome, {st.user.name or 'Traveler'}! 🌏")
+
+# ... paste ALL your existing journey map, sidebar, editing logic, etc. here ...
+
+# # Example: restrict editing to specific users (optional)
+#
+#     if st.user.email in ALLOWED_EDIT_EMAILS:
+#         st.success("You have **edit permissions**.")
+#         # show edit buttons, add memory form, etc.
+#     else:
+#         st.info("You are in **view-only mode**.")
+#         # hide editing UI or show read-only version
+
+#========================== Login Session ===========================
 #st.title("🌍 My Life Journey – Map with Colored Timeline")
 
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
@@ -1020,11 +1102,12 @@ if data["events"]:
 
         st.markdown("</div>", unsafe_allow_html=True)
 else:
-    st.info("Add memories to see the extended timeline.")
+    #st.info("Add memories to see the extended timeline.")
+    pass
 
-    st.write("DEBUG: bf create_map Current map_center in session_state =", st.session_state.get("map_center"))
-    st.write("DEBUG: bf create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
-    st.write("DEBUG: bf create_map force_map_refresh counter =", st.session_state.force_map_refresh)
+    #st.write("DEBUG: bf create_map Current map_center in session_state =", st.session_state.get("map_center"))
+    #st.write("DEBUG: bf create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
+    #st.write("DEBUG: bf create_map force_map_refresh counter =", st.session_state.force_map_refresh)
 
 # Conditionally pass center/zoom only if not default (allows fit_bounds to take effect initially)
 center = st.session_state.map_center if st.session_state.map_center != [20, 0] else None
