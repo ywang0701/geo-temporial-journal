@@ -1078,33 +1078,29 @@ if data["events"]:
             st.session_state.reset = True
             st.rerun()
 
-    with col_num:
-        marker_id = st.number_input("Go to marker ID", min_value=1, max_value=len(sorted_events), value=1, step=1, label_visibility="collapsed")
-    with col_btn:
-        if st.button("Visit => Marker"):
-            if 1 <= marker_id <= len(sorted_events):
-                idx = marker_id - 1
-                event = sorted_events[idx]
-                lat = event["location"]["latitude"]
-                lon = event["location"]["longitude"]
-                st.session_state.map_center = [lat, lon]
-                st.session_state.map_zoom = 12  # Adjust zoom level as needed
-                st.session_state.force_map_refresh += 1
-                #     title = html.escape(event.get('title', 'Untitled'))
-                #st.write("DEBUG: Current event name =", event["title"])
-                #st.write("DEBUG: Current event name =", event["id"])
-                #st.write("DEBUG: Current map_center in session_state =", st.session_state.get("map_center"))
-                #st.write("DEBUG: Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
-                #st.write("DEBUG: force_map_refresh counter =", st.session_state.force_map_refresh)
-                # Debug: show current target values
-                logger.info(f"DEBUG: Current Marker ID idx = {st.session_state.get("idx")}")
-                logger.info(f"DEBUG: Current Marker ID id  = {event["id"]}")
-                logger.info(f"DEBUG: Current Marker ID = {event["title"]}")
-                logger.info(f"DEBUG: Current map_center in session_state = {st.session_state.get("map_center")}")
-                logger.info(f"DEBUG: Current map_zoom   in session_state = {st.session_state.get("map_zoom")}")
-                # st.rerun()
-            else:
-                st.error("Invalid marker ID")
+    logger.info(f"DEBUG: event_cout {event_count}")
+    if event_count >= 15:
+        with col_num:
+            marker_id = st.number_input("Go to marker ID", min_value=1, max_value=len(sorted_events), value=1, step=1, label_visibility="collapsed")
+        with col_btn:
+            if st.button("Visit => Marker"):
+                if 1 <= marker_id <= len(sorted_events):
+                    idx = marker_id - 1
+                    event = sorted_events[idx]
+                    lat = event["location"]["latitude"]
+                    lon = event["location"]["longitude"]
+                    st.session_state.map_center = [lat, lon]
+                    st.session_state.map_zoom = 12  # Adjust zoom level as needed
+                    st.session_state.force_map_refresh += 1
+                    # Debug: show current target values
+                    #logger.info(f"DEBUG: Current Marker ID idx = {st.session_state.get("idx")}")
+                    #logger.info(f"DEBUG: Current Marker ID id  = {event["id"]}")
+                    #logger.info(f"DEBUG: Current Marker ID = {event["title"]}")
+                    #logger.info(f"DEBUG: Current map_center in session_state = {st.session_state.get("map_center")}")
+                    #logger.info(f"DEBUG: Current map_zoom   in session_state = {st.session_state.get("map_zoom")}")
+                    ## st.rerun()
+                else:
+                    st.error("Invalid marker ID")
 
 #st.title(full_title)
 
