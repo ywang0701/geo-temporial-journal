@@ -2025,7 +2025,7 @@ if st.user.is_logged_in:
 
 else:
     # Not logged in → show minimal / read-only info
-    st.sidebar.subheader(f"🗺️ Journey: {st.session_state.selected_json_file} ({timeline_info})")
+    st.sidebar.subheader(f"🗺️ Journey: {st.session_state.selected_json_file} ({timeline_info}")
     #st.sidebar.markdown(f"️🗺️ Journey {st.session_state.selected_json_file} has {event_count} {place_text}")
     st.sidebar.caption("Sign in to edit this journey")
 
