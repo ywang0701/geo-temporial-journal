@@ -91,8 +91,6 @@ else:
     st.sidebar.info("🖥️ Running locally (using filesystem)")
     # Your local fallback code (UPLOADS_PHOTOS, etc.)
 
-#if IS_CLOUD:
-
 def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
     blob = bucket.blob(destination_blob_name)
     blob.upload_from_string(file_bytes, content_type=content_type)
@@ -120,6 +118,7 @@ else:
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
 
 #DEFAULT_ACTIVE_JSON="life_events.json"
+
 if "edit_lat" not in st.session_state:
     st.session_state.edit_lat = None
 if "edit_lon" not in st.session_state:
@@ -403,21 +402,11 @@ else:
     # Normal case: journeys exist
     pass
 
-# def is_journey_locked(json_filename):
-#     if IS_CLOUD:
-#         lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
-#         return lock_blob.exists()
-#     else:
-#         lock_path = BASE_DIR / f"{json_filename}_lock"
-#         return lock_path.exists()
-#
-
 def is_journey_locked(json_filename):
     if not st.user.is_logged_in:
         logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
         return True
 
-    # User is logged in → proceed to check file-based lock
     if IS_CLOUD:
         lock_blob_name = f"{JOURNEYS_FOLDER}/{json_filename}_lock"
         lock_exists = bucket.blob(lock_blob_name).exists()
@@ -501,7 +490,6 @@ def ensure_valid_json():
 @st.cache_data(show_spinner=False)
 def load_data_from_file(blob_or_path):
     try:
-        #if os.getenv("K_SERVICE1"):
         logger.info(f"📂 Attempting to load data from: {blob_or_path}")
         if IS_CLOUD:
             data_bytes = download_from_gcs(blob_or_path)
@@ -532,8 +520,6 @@ if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
-#data = st.session_state.data
-
 # List journeys
 def get_local_json_files():
     #if os.getenv("K_SERVICE1"):
@@ -560,6 +546,7 @@ if data["events"]:
         timeline_info = f" ({start_year} – {end_year})"
         timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
             "events"] else ""
+
 # ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
 json_filename = JSON_FILE.name
 if st.session_state.selected_json_file:
@@ -594,8 +581,6 @@ st.set_page_config(
    layout="wide",
    initial_sidebar_state=initial_sidebar
 )
-
-#st.title(full_title)
 
 # ==================== SESSION STATE INITIALIZATION ====================
 if "editing_event_id" not in st.session_state:
@@ -2007,62 +1992,18 @@ with st.sidebar.expander("🔍 Search Journey ", expanded=False):
             st.rerun()
 
 
-
-# st.sidebar.markdown("---")
 # st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 event_count = len(st.session_state.data.get("events", []))
 place_text = "memory" if event_count == 1 else "memories"
 
-
 locked = st.session_state.get("current_journey_locked", False)
 
 lock_emoji = "🔒" if st.session_state.current_journey_locked else "✏️"
-#st.sidebar.markdown(f"**Current Journey** {lock_emoji}")
 
 #st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
-#st.sidebar.subheader(f"🗺️ Selected Journey {lock_emoji}")
-
-#st.sidebar.subheader(f"🗺️ Selected Journey")
 
 # Near the top of sidebar — after showing current journey name & count
 locked = st.session_state.current_journey_locked
-
-# if locked:
-#     st.sidebar.warning("🔒 This journey is **locked** (view-only)")
-#     st.sidebar.caption("Editing is disabled for this file.")
-# else:
-#     st.sidebar.success("✏️ This journey is **editable**")
-#     # Optional: show small lock button
-#     if st.sidebar.button("Lock this journey", type="secondary", help="Prevent future edits", use_container_width=True):
-#         if IS_CLOUD:
-#             bucket.blob(f"{JOURNEYS_FOLDER}/{st.session_state.selected_json_file}_lock").upload_from_string(b"locked")
-#         else:
-#             (BASE_DIR / f"{st.session_state.selected_json_file}_lock").write_text("locked")
-#         st.session_state.current_journey_locked = True
-#         st.success("Journey locked!")
-#         st.rerun()
-#
-#     # Optional: unlock button (only shown to admin/owner — or always for simplicity)
-#     # if st.sidebar.button("Unlock this journey", type="secondary"):
-#     #     ... delete lock file/blob ...
-
-# ############# another  Journey Lock / Unlock format #####################
-#
-# locked = st.session_state.get("current_journey_locked")
-#
-# st.sidebar.markdown(
-#     f"**Current Journey**    "
-#     f"{'🔒 **Locked**' if locked else '✏️ **Editable**'}"
-# )
-#
-# # Button directly below
-# btn_label = "🔓 Unlock" if locked else "🔒 Lock"
-# btn_type  = "primary" if locked else "secondary"
-#
-# if st.sidebar.button(btn_label, type=btn_type, use_container_width=True):
-#     # same lock/unlock logic as above
-#     ...
-#     st.rerun()
 
 # ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
 #st.sidebar.markdown("### Journey Status")
@@ -2132,64 +2073,6 @@ else:
     st.sidebar.subheader(f"🗺️ Journey: {st.session_state.selected_json_file} {timeline_info}")
     #st.sidebar.markdown(f"️🗺️ Journey {st.session_state.selected_json_file} has {event_count} {place_text}")
     st.sidebar.caption("Sign in to edit this journey")
-
-#
-# # ==================== MODE SELECTION (INLINE ON ONE LINE) ====================
-# # Create a single row with label and radio buttons
-# col_label, col_radio = st.sidebar.columns([1, 3])  # Adjust ratio: 1 for label, 3 for buttons
-#
-# with col_label:
-#     pass
-#     # st.markdown("<div style='padding-top: 8px; font-weight: 600;'>Mode:</div>", unsafe_allow_html=True)
-#     # The padding-top aligns it vertically with the radio buttons
-#
-# with col_radio:
-#
-#     mode = st.sidebar.radio(
-#         label="App mode",                  # Hidden or visible as needed
-#         options=["👁️ View Mode", "✏️ Edit Mode"],
-#         captions=["Explore Journey", "Add Memories"],
-#         index=0 if st.session_state.app_mode == "View Mode" else 1,
-#         horizontal=True,
-#         label_visibility="collapsed",      # Hide the main label since we have markdown above
-#         key="mode_radio"
-#     )
-# # Clean the returned value (remove emoji for clean comparison/storage)
-# clean_mode = mode.split(" ", 1)[1] if " " in mode else mode  # → "View Mode" or "Edit Mode"
-#
-# if clean_mode != st.session_state.app_mode:
-#     st.session_state.app_mode = clean_mode
-#     st.rerun()
-#
-
-#st.sidebar.markdown(f"{st.session_state.selected_json_file} has {event_count} {place_text}")
-
-
-#
-# sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
-# for idx, event in enumerate(sorted_events, start=1):
-#     with st.sidebar.expander(f"🔹{idx}. {event['date']} — {event['title']}", expanded=False):
-#         st.caption(f"📍 {event['location']['name']}")
-#         for p in event["media"].get("photos", [])[:3]:
-#             if os.path.exists(p):
-#                 st.image(p, width=200)
-#         for v in event["media"].get("videos", [])[:1]:
-#             if os.path.exists(v):
-#                 st.video(v)
-#         if not st.session_state.current_journey_locked:
-#             # Edit and Delete buttons side by side
-#             col_edit, col_delete = st.columns([2, 1])
-#             with col_edit:
-#                 if st.button("✏️ Edit", key=f"edit_sidebar_{event['id']}"):
-#                     st.session_state.editing_event_id = event["id"]
-#                     st.rerun()
-#             with col_delete:
-#                 if st.button("🗑️ Delete", key=f"delete_sidebar_{event['id']}"):
-#                     st.session_state.confirm_delete_id = event["id"]
-#                     st.rerun()
-#         else:
-#             st.caption("View-only mode (locked)")
-#
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 
