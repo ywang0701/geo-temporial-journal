@@ -1507,7 +1507,7 @@ st.sidebar.subheader("✨ Journey Operations")
 if not st.session_state.current_journey_locked:
     # ==================== CREATE NEW JOURNEY ====================
     #st.sidebar.markdown("---")
-    with st.sidebar.expander("➕ Create New Journey", expanded=False):
+    with st.sidebar.expander("➕ Create a Journey", expanded=False):
         st.write("Enter a name for your new journey. It will start empty.")
 
         new_journey_name = st.text_input(
@@ -1585,7 +1585,7 @@ if not st.session_state.current_journey_locked:
                             st.rerun()
 
     # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
-    with st.sidebar.expander("✏️ Rename a Journey", expanded=False):
+    with st.sidebar.expander("✏️ Rename Journey", expanded=False):
         st.write("Change the name of an existing journey. This renames the file and updates the title.")
 
         available_journeys = get_local_json_files()
@@ -1696,7 +1696,7 @@ if not st.session_state.current_journey_locked:
                 st.warning("Please enter a new journey name.")
 
 # ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
+with st.sidebar.expander("📥 Backup Journey", expanded=False):
     st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
 
     available_journeys = get_local_json_files()
@@ -1752,7 +1752,7 @@ with st.sidebar.expander("📥 Download Journey Backup", expanded=False):
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("🌍 Download Journey as KML", expanded=False):
+with st.sidebar.expander("🌍 Download Journey for Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
 
     available_journeys = get_local_json_files()
@@ -1822,7 +1822,7 @@ with st.sidebar.expander("🌍 Download Journey as KML", expanded=False):
 
 
 # ==================== UPLOAD & RESTORE JSON (only when current journey is unlocked) ====================
-with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
+with st.sidebar.expander("📤 Upload Journey", expanded=False):
     if st.session_state.current_journey_locked:
         st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
         st.caption("Switch to an unlocked journey to use this feature.")
@@ -1917,7 +1917,7 @@ with st.sidebar.expander("📤 Upload a saved Journey", expanded=False):
 
 # ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
 if not st.session_state.current_journey_locked:
-    with st.sidebar.expander("🗑️ Delete a saved Journey", expanded=False):
+    with st.sidebar.expander("🗑️ Delete Journey", expanded=False):
         st.warning("⚠️ This will **permanently delete** a journey file and all its photos/videos.")
 
         # Get current list of journeys (from GCS or local)
@@ -1988,36 +1988,6 @@ if not st.session_state.current_journey_locked:
 
             with col_cancel:
                 st.button("Cancel", type="secondary", use_container_width=True)
-
-# with st.sidebar.expander("🔍 Filter a Journey", expanded=False):
-#     # Input field
-#     search_input = st.text_input(
-#         "Search title or description",
-#         value=st.session_state.get("search_text", ""),
-#         placeholder="e.g. Paris, birthday, 2025",
-#         key="search_input_temp"  # temporary key to avoid session state conflict
-#     )
-#
-#     # Search button + clear button side by side
-#     col_search, col_clear = st.columns([3, 1])
-#
-#     with col_search:
-#         if st.button("🔎 Search", type="primary", use_container_width=True):
-#             # Apply search only when button is clicked
-#             st.session_state.search_text = search_input.strip()
-#             st.write("DEBUG: Search set to:", st.session_state.search_text)
-#             st.rerun()  # refresh map with new filter
-#
-#     with col_clear:
-#         if st.button("✖ Clear", use_container_width=True):
-#             st.session_state.search_text = ""
-#             st.rerun()
-#
-#     # Show current active filter (nice feedback)
-#     if st.session_state.get("search_text"):
-#         st.caption(f"Active filter: \"{st.session_state.search_text}\"")
-#     else:
-#         st.caption("No filter active")
 
 with st.sidebar.expander("🔍 Search Journey ", expanded=False):
     tab_normal, tab_regex = st.tabs(["Normal Search", "Regex (advanced)"])
