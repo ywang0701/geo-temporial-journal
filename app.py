@@ -1752,7 +1752,7 @@ with st.sidebar.expander("📥 Backup Journey", expanded=False):
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("🌍 Download Journey for Google Map/Earth", expanded=False):
+with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
 
     available_journeys = get_local_json_files()
