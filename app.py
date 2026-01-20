@@ -20,6 +20,7 @@ import os
 from google.cloud import storage
 from google.oauth2 import service_account
 import simplekml
+import re
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -725,19 +726,40 @@ def build_popup_html(event):
 def create_map():
     events = st.session_state.data["events"]
 
-    search_text = st.session_state.get("search_text", "")
+    mode = st.session_state.get("search_mode", "normal")
+    value = st.session_state.get("search_value", "")
 
-    if search_text:
-        lower_search = search_text.lower()
-        filtered_events = [
-            e for e in events
-            if lower_search in e.get("title", "").lower() or
-               lower_search in e.get("description", "").lower()
-        ]
-    else:
-        filtered_events = events
+    if value:
+        if mode == "regex":
+            try:
+                pattern = re.compile(value, re.IGNORECASE)
+                filtered_events = [e for e in events if
+                            pattern.search(e.get("title", "")) or pattern.search(e.get("description", ""))]
+            except re.error:
+                st.error("Invalid regex pattern")
+                filtered = events
+        else:
+            lower_search = value.lower()
+            filtered_events = [
+                e for e in events
+                if lower_search in e.get("title", "").lower() or
+                   lower_search in e.get("description", "").lower()
+            ]
+        events = filtered_events
 
-    events = filtered_events
+    # # todo remove session variable search_text = st.session_state.get("search_text", "")
+    # search_text = value
+    #
+    # if search_text:
+    #     lower_search = search_text.lower()
+    #     filtered_events = [
+    #         e for e in events
+    #         if lower_search in e.get("title", "").lower() or
+    #            lower_search in e.get("description", "").lower()
+    #     ]
+    # else:
+    #     filtered_events = events
+
 
     if not events:
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
@@ -1967,35 +1989,53 @@ if not st.session_state.current_journey_locked:
             with col_cancel:
                 st.button("Cancel", type="secondary", use_container_width=True)
 
-with st.sidebar.expander("🔍 Filter a Journey", expanded=False):
-    # Input field
-    search_input = st.text_input(
-        "Search title or description",
-        value=st.session_state.get("search_text", ""),
-        placeholder="e.g. Paris, birthday, 2025",
-        key="search_input_temp"  # temporary key to avoid session state conflict
-    )
+# with st.sidebar.expander("🔍 Filter a Journey", expanded=False):
+#     # Input field
+#     search_input = st.text_input(
+#         "Search title or description",
+#         value=st.session_state.get("search_text", ""),
+#         placeholder="e.g. Paris, birthday, 2025",
+#         key="search_input_temp"  # temporary key to avoid session state conflict
+#     )
+#
+#     # Search button + clear button side by side
+#     col_search, col_clear = st.columns([3, 1])
+#
+#     with col_search:
+#         if st.button("🔎 Search", type="primary", use_container_width=True):
+#             # Apply search only when button is clicked
+#             st.session_state.search_text = search_input.strip()
+#             st.write("DEBUG: Search set to:", st.session_state.search_text)
+#             st.rerun()  # refresh map with new filter
+#
+#     with col_clear:
+#         if st.button("✖ Clear", use_container_width=True):
+#             st.session_state.search_text = ""
+#             st.rerun()
+#
+#     # Show current active filter (nice feedback)
+#     if st.session_state.get("search_text"):
+#         st.caption(f"Active filter: \"{st.session_state.search_text}\"")
+#     else:
+#         st.caption("No filter active")
 
-    # Search button + clear button side by side
-    col_search, col_clear = st.columns([3, 1])
+with st.sidebar.expander("🔍 Search Journey ", expanded=False):
+    tab_normal, tab_regex = st.tabs(["Normal Search", "Regex (advanced)"])
 
-    with col_search:
-        if st.button("🔎 Search", type="primary", use_container_width=True):
-            # Apply search only when button is clicked
-            st.session_state.search_text = search_input.strip()
-            st.write("DEBUG: Search set to:", st.session_state.search_text)
-            st.rerun()  # refresh map with new filter
-
-    with col_clear:
-        if st.button("✖ Clear", use_container_width=True):
-            st.session_state.search_text = ""
+    with tab_normal:
+        normal_search = st.text_input("Keywords (comma/space separated)", key="normal_search")
+        if st.button("Search (normal)", key="btn_normal"):
+            st.session_state.search_mode = "normal"
+            st.session_state.search_value = normal_search
             st.rerun()
 
-    # Show current active filter (nice feedback)
-    if st.session_state.get("search_text"):
-        st.caption(f"Active filter: \"{st.session_state.search_text}\"")
-    else:
-        st.caption("No filter active")
+    with tab_regex:
+        regex_pattern = st.text_input("Regular expression", placeholder="Paris|birthday|202[0-5]", key="regex_pattern")
+        if st.button("Search (regex)", key="btn_regex"):
+            st.session_state.search_mode = "regex"
+            st.session_state.search_value = regex_pattern
+            st.rerun()
+
 
 
 # st.sidebar.markdown("---")
