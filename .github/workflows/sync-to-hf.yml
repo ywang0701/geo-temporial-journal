@@ -1,0 +1,21 @@
+name: Sync to Hugging Face Space
+
+on:
+  push:
+    branches: [main]          # or master if you use that
+  workflow_dispatch:          # allows manual trigger
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0        # full history
+        lfs: true             # important if you have large files
+
+    - name: Push to Hugging Face hub
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        git push https://ywang0701:$HF_TOKEN@huggingface.co/spaces/ywang0701/jj1 main --force
