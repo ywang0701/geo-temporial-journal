@@ -1,5 +1,5 @@
 #import select
-# COPY .streamlit/ ./.streamlit/ Dockerfile  
+# COPY .streamlit/ ./.streamlit/ Dockerfile
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -61,7 +61,9 @@ if "reset_map" not in st.session_state:
 #else:
 #    BASE_DIR = Path(__file__).resolve().parent
 
-BASE_DIR = Path("/data/JJ")
+#EBASE_DIR = Path("/adata/JJ")
+# BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.getcwd()).resolve()
 
 # === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
 BUCKET_NAME = "journey-journal"  # Your GCS bucket name
@@ -509,6 +511,7 @@ def load_data_from_file(blob_or_path):
             data_bytes = download_from_gcs(blob_or_path)
             text = data_bytes.decode("utf-8")
         else:
+            logger.info(f" blog_or path {Path(blob_or_path)}")
             text = Path(blob_or_path).read_text(encoding="utf-8")
         if not text.strip():
             raise ValueError("Empty")
@@ -1253,6 +1256,22 @@ map_data = st_folium(
     #returned_objects = ["last_clicked", "center", "zoom"]
 )
 
+click = map_data["last_clicked"]
+
+if "lat_edit" not in st.session_state:
+    st.session_state.edit_lat = None
+
+if "lon_edit" not in st.session_state:
+    st.session_state.edit_lon = None
+
+if map_data is not None and map_data.get("last_clicked"):
+    new_lat = round(click["lat"], 6)
+    new_lon = round(click["lng"], 6)
+
+# Update the live values that the number inputs will read from
+    st.session_state.edit_lat = new_lat
+    st.session_state.edit_lon = new_lon
+
 
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
 
@@ -1277,119 +1296,119 @@ if map_data and map_data.get("center"):
 if st.session_state.editing_event_id and st.session_state.add_new_memory:
     st.session_state.add_new_memory = False  # editing takes priority
 
-# #if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
-# if not st.session_state.current_journey_locked and st.session_state.add_new_memory and map_data and map_data.get("last_clicked"):
-#     click = map_data["last_clicked"]
-#     lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#     default_name = f"{lat:.5f}, {lon:.5f}"
-#
-#     st.sidebar.header("➕ Add New Memory")
-#     with st.sidebar.form("add_form", clear_on_submit=False):
-#         title = st.text_input("Title*", "")
-#         date = st.date_input("Date*", datetime.today(),
-#                              min_value= MIN_DATE,
-#                              #min_value=datetime(1930, 1, 1).date(),
-#                              max_value=MAX_DATE)
-#         loc_name = st.text_input("Location Name*", default_name)
-#         description = st.text_area("Description")
-#         photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
-#         videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
-#
-#         col_save, col_cancel = st.columns([1, 1])
-#         with col_save:
-#             save_clicked = st.form_submit_button("💾 Save Memory")
-#         #with col_cancel:
-#         #    cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
-#
-#         if save_clicked:
-#             if not title.strip():
-#                 st.error("Title required")
-#             else:
-#                 # photo_paths = []
-#                 # for up in photos or []:
-#                 #     fname = f"{int(time.time())}_{up.name}"
-#                 #     # path = UPLOADS_PHOTOS / fname
-#                 #     # path.write_bytes(up.getbuffer())
-#                 #     # photo_paths.append(str(path))
-#                 #     file_bytes = up.getbuffer()
-#                 #
-#                 #     #if os.getenv("K_SERVICE1"):
-#                 #     if IS_CLOUD:
-#                 #         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
-#                 #     else:
-#                 #         path = UPLOADS_PHOTOS / fname
-#                 #         path.write_bytes(file_bytes)
-#                 #         photo_paths.append(str(path))
-#                 #
-#                 # video_paths = []
-#                 # for up in videos or []:
-#                 #     fname = f"{int(time.time())}_{up.name}"
-#                 #     # path = UPLOADS_VIDEOS / fname
-#                 #     # path.write_bytes(up.getbuffer())
-#                 #     # video_paths.append(str(path))
-#                 #     file_bytes = up.getbuffer()
-#                 #     #if os.getenv("K_SERVICE1"):
-#                 #     if IS_CLOUD:
-#                 #         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
-#                 #     else:
-#                 #         path = UPLOADS_VIDEOS / fname
-#                 #         path.write_bytes(file_bytes)
-#                 #         video_paths.append(str(path))
-#
-#                 photo_paths = []
-#                 for up in photos or []:
-#                     if up is not None:  # Safety check
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
-#                             if not file_bytes:  # Extra safety
-#                                 st.warning(f"Empty file skipped: {up.name}")
-#                                 continue
-#                             gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-#                             photo_paths.append(gcs_url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload photo {up.name}: {e}")
-#
-#                 video_paths = []
-#                 for up in videos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 st.warning(f"Empty file skipped: {up.name}")
-#                                 continue
-#                             gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-#                             video_paths.append(gcs_url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload video {up.name}: {e}")
-#
-#                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
-#                 new_event = {
-#                     "id": new_id,
-#                     "title": title,
-#                     "date": date.strftime("%Y-%m-%d"),
-#                     "location": {"name": loc_name, "latitude": lat, "longitude": lon},
-#                     "description": description,
-#                     "media": {"photos": photo_paths, "videos": video_paths}
-#                 }
-#                 st.session_state.data["events"].append(new_event)
-#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-#                 save_data_to_storage(st.session_state.data)
-#                 st.session_state.force_map_refresh += 1
-#                 st.success("Memory added!")
-#                 st.rerun()
-#         # === CANCEL BUTTON — OUTSIDE THE FORM ===
-#         if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
-#             st.session_state.current_journey_locked = False
-#             st.session_state.add_new_memory = False
-#             st.success("Adding Memory cancelled!")
-#             st.rerun()  # Clears the form by removing last_clicked state
-#         #if cancel_clicked:
-#         #    st.rerun()
-# #else:
-# #    if map_data and map_data.get("last_clicked"):
-# #        st.sidebar.info("🔒 This journey is locked — cannot add new memories")
+#if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
+if not st.session_state.current_journey_locked and st.session_state.add_new_memory and map_data and map_data.get("last_clicked"):
+    click = map_data["last_clicked"]
+    lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+    default_name = f"{lat:.5f}, {lon:.5f}"
+
+    st.sidebar.header("➕ Add New Memory")
+    with st.sidebar.form("add_form", clear_on_submit=False):
+        title = st.text_input("Title*", "")
+        date = st.date_input("Date*", datetime.today(),
+                             min_value= MIN_DATE,
+                             #min_value=datetime(1930, 1, 1).date(),
+                             max_value=MAX_DATE)
+        loc_name = st.text_input("Location Name*", default_name)
+        description = st.text_area("Description")
+        photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
+        videos = st.file_uploader("Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"])
+
+        col_save, col_cancel = st.columns([1, 1])
+        with col_save:
+            save_clicked = st.form_submit_button("💾 Save Memory")
+        #with col_cancel:
+        #    cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
+
+        if save_clicked:
+            if not title.strip():
+                st.error("Title required")
+            else:
+                photo_paths = []
+                for up in photos or []:
+                    fname = f"{int(time.time())}_{up.name}"
+                    # path = UPLOADS_PHOTOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # photo_paths.append(str(path))
+                    file_bytes = up.getbuffer()
+
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
+                        photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_PHOTOS / fname
+                        path.write_bytes(file_bytes)
+                        photo_paths.append(str(path))
+
+                video_paths = []
+                for up in videos or []:
+                    fname = f"{int(time.time())}_{up.name}"
+                    # path = UPLOADS_VIDEOS / fname
+                    # path.write_bytes(up.getbuffer())
+                    # video_paths.append(str(path))
+                    file_bytes = up.getbuffer()
+                    #if os.getenv("K_SERVICE1"):
+                    if IS_CLOUD:
+                        video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
+                    else:
+                        path = UPLOADS_VIDEOS / fname
+                        path.write_bytes(file_bytes)
+                        video_paths.append(str(path))
+
+                # photo_paths = []
+                # for up in photos or []:
+                #     if up is not None:  # Safety check
+                #         fname = f"{int(time.time())}_{up.name}"
+                #         try:
+                #             file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
+                #             if not file_bytes:  # Extra safety
+                #                 st.warning(f"Empty file skipped: {up.name}")
+                #                 continue
+                #             gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                #             photo_paths.append(gcs_url)
+                #         except Exception as e:
+                #             st.error(f"Failed to upload photo {up.name}: {e}")
+                #
+                # video_paths = []
+                # for up in videos or []:
+                #     if up is not None:
+                #         fname = f"{int(time.time())}_{up.name}"
+                #         try:
+                #             file_bytes = up.getvalue()
+                #             if not file_bytes:
+                #                 st.warning(f"Empty file skipped: {up.name}")
+                #                 continue
+                #             gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                #             video_paths.append(gcs_url)
+                #         except Exception as e:
+                #             st.error(f"Failed to upload video {up.name}: {e}")
+
+                new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
+                new_event = {
+                    "id": new_id,
+                    "title": title,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "location": {"name": loc_name, "latitude": lat, "longitude": lon},
+                    "description": description,
+                    "media": {"photos": photo_paths, "videos": video_paths}
+                }
+                st.session_state.data["events"].append(new_event)
+                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                save_data_to_storage(st.session_state.data)
+                st.session_state.force_map_refresh += 1
+                st.success("Memory added!")
+                st.rerun()
+        # === CANCEL BUTTON — OUTSIDE THE FORM ===
+        if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+            st.session_state.current_journey_locked = False
+            st.session_state.add_new_memory = False
+            st.success("Adding Memory cancelled!")
+            st.rerun()  # Clears the form by removing last_clicked state
+        #if cancel_clicked:
+        #    st.rerun()
+#else:
+#    if map_data and map_data.get("last_clicked"):
+#        st.sidebar.info("🔒 This journey is locked — cannot add new memories")
 
 # # ==================== EDITING EXISTING EVENT ====================
 # if not st.session_state.current_journey_locked and st.session_state.editing_event_id:
@@ -2210,7 +2229,166 @@ else:
 #                     st.rerun()
 #
 
+################# MANUAL EDITING
+
+
+# ==================== EDITING EXISTING EVENT ====================
+if st.session_state.editing_event_id:
+    logger.info(f" pass EDITING  EXISTING EVENT")
+    event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
+    if event:
+        if map_data and map_data.get("last_clicked"):
+            click = map_data["last_clicked"]
+            lat, lon = click["lat"], click["lng"]
+            # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+            st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+            #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+            #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+            #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+            st.session_state.latitude = lat
+            st.session_state.longitude = lon
+
+        st.sidebar.header(f"✏️ Editing: {event['title']}")
+
+        cur_lat = event["location"]["latitude"]
+        cur_lon = event["location"]["longitude"]
+        #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+        st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
+
+        #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
+        #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
+
+        new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
+        new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
+
+        for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
+            st.sidebar.markdown(f"### Current {label}")
+            paths = event["media"].get(mtype, []).copy()
+            if paths:
+                cols = st.sidebar.columns(3 if mtype == "photos" else 2)
+                for i, p in enumerate(paths):
+                    if os.path.exists(p):
+                        with cols[i % len(cols)]:
+                            if mtype == "photos":
+                                st.image(p, width=150)
+                            else:
+                                st.video(p)
+                            if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
+                                os.remove(p)
+                                event["media"][mtype].remove(p)
+                                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+                                #                     encoding="utf-8")
+                                save_data_to_storage(st.session_state.data)
+                                st.rerun()
+            else:
+                st.sidebar.info(f"No {label.lower()}")
+
+        with st.sidebar.form("edit_form"):
+            if map_data and map_data.get("last_clicked"):
+                click = map_data["last_clicked"]
+                lat, lon = click["lat"], click["lng"]
+                #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+                #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+                st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+                #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+                #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+                #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+                st.session_state.latitude = lat
+                st.session_state.longitude = lon
+                pass
+            new_title = st.text_input("Title", event["title"])
+            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
+                                     min_value=datetime(1920, 1, 1).date(),
+                                     max_value=None)
+            #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
+            new_loc = st.text_input("Location Name", st.session_state.default_name)
+            new_desc = st.text_area("Description", event.get("description", ""))
+            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
+                                          key=f"add_ph_{event['id']}")
+            add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
+                                          key=f"add_vid_{event['id']}")
+
+            if st.form_submit_button("💾 Save Changes", type="primary"):
+                event["location"]["latitude"] = new_lat
+                event["location"]["longitude"] = new_lon
+                event["title"] = new_title
+                event["date"] = new_date.strftime("%Y-%m-%d")
+                event["location"]["name"] = new_loc
+                event["description"] = new_desc
+
+                # --- Upload new photos (FIXED) ---
+                for up in add_photos or []:
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                continue
+                            if IS_CLOUD:
+                                url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+                            else:
+                                local_path = UPLOADS_PHOTOS / fname
+                                local_path.write_bytes(file_bytes)
+                                url = str(local_path)
+                            event["media"].setdefault("photos", []).append(url)
+                        except Exception as e:
+                            st.error(f"Failed to upload photo {up.name}: {e}")
+
+                # --- Upload new videos (FIXED) ---
+                for up in add_videos or []:
+                    if up is not None:
+                        fname = f"{int(time.time())}_{up.name}"
+                        try:
+                            file_bytes = up.getvalue()
+                            if not file_bytes:
+                                continue
+                            if IS_CLOUD:
+                                url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+                            else:
+                                local_path = UPLOADS_VIDEOS / fname
+                                local_path.write_bytes(file_bytes)
+                                url = str(local_path)
+                            event["media"].setdefault("videos", []).append(url)
+                        except Exception as e:
+                            st.error(f"Failed to upload video {up.name}: {e}")
+
+                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+                save_data_to_storage(st.session_state.data)
+                st.session_state.force_map_refresh += 1
+                st.session_state.editing_event_id = None
+                st.success("Changes saved!")
+                st.rerun()
+
+            if st.sidebar.button("Cancel Editing"):
+                st.session_state.editing_event_id = None
+                st.rerun()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+######################## buggy EDITING ######################
+if "edit_lat" not in st.session_state:
+    st.session_state.edit_lat = None
+if "edit_lon" not in st.session_state:
+    st.session_state.edit_lon = None
+
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+
 
 for idx, event in enumerate(sorted_events, start=1):
     expander_key = f"memory_expander_{event['id']}"
@@ -2252,19 +2430,36 @@ for idx, event in enumerate(sorted_events, start=1):
             st.markdown("---")
             st.subheader("Edit this memory")
 
+
             with st.form(key=f"edit_form_{event['id']}", clear_on_submit=False):
                 col_lat, col_lon = st.columns(2)
+
+                if st.session_state.edit_lat is None:
+                    lat_value = float(event["location"]["latitude"])
+                else:
+                    lat_value = float(st.session_state.edit_lat)
+
+                if st.session_state.edit_lon is None:
+                    lon_value = float(event["location"]["longitude"])
+                else:
+                    lon_value = float(st.session_state.edit_lon)
+
+                logger.info(f"pass Edit marker {lat_value}   {st.session_state.edit_lat}")
+                logger.info(f"pass Edit marker {lon_value} {st.session_state.edit_lon}")
+
                 with col_lat:
                     new_lat = st.number_input(
                         "Latitude",
-                        value=float(event["location"]["latitude"]),
+                        value=lat_value,
+                        #value=float(event["location"]["latitude"]),
                         format="%.6f", step=0.000001,
                         key=f"lat_{event['id']}"
                     )
                 with col_lon:
                     new_lon = st.number_input(
                         "Longitude",
-                        value=float(event["location"]["longitude"]),
+                        value=lon_value,
+                        #value=float(event["location"]["longitude"]),
                         format="%.6f", step=0.000001,
                         key=f"lon_{event['id']}"
                     )
@@ -2340,6 +2535,8 @@ for idx, event in enumerate(sorted_events, start=1):
                     save_data_to_storage(st.session_state.data)
                     st.session_state.force_map_refresh += 1
                     st.session_state.editing_event_id = None
+                    st.session_state.pop("edit_lat" , None)
+                    st.session_state.pop("edit_lon" , None)
                     st.success("Memory updated!")
                     st.rerun()
 
