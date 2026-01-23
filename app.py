@@ -124,6 +124,10 @@ def list_journey_blobs():
 def get_json_path(json_name):
     return f"{JOURNEYS_FOLDER}/{json_name}"
 
+def to_relative_path(path: Path) -> str:
+    """Convert absolute Path to path relative to CWD (for JSON storage)"""
+    return path.relative_to(BASE_DIR).as_posix()
+
 if IS_CLOUD:
     pass
 else:
@@ -1341,7 +1345,8 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                     else:
                         path = UPLOADS_PHOTOS / fname
                         path.write_bytes(file_bytes)
-                        photo_paths.append(str(path))
+                        # photo_paths.append(str(path))
+                        photo_paths.append(to_relative_path(path))
 
                 video_paths = []
                 for up in videos or []:
@@ -1356,7 +1361,8 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                     else:
                         path = UPLOADS_VIDEOS / fname
                         path.write_bytes(file_bytes)
-                        video_paths.append(str(path))
+                        #video_paths.append(str(path))
+                        video_paths.append(to_relative_path(path))
 
                 # photo_paths = []
                 # for up in photos or []:
@@ -2235,144 +2241,146 @@ else:
 ################# MANUAL EDITING
 
 
-# ==================== EDITING EXISTING EVENT ====================
-if st.session_state.editing_event_id:
-    logger.info(f" pass EDITING  EXISTING EVENT")
-    event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
-    if event:
-        if map_data and map_data.get("last_clicked"):
-            click = map_data["last_clicked"]
-            lat, lon = click["lat"], click["lng"]
-            st.session_state.latitude = lat
-            st.session_state.longitude = lon
-            # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-            st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-            #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-            #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-            #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-
-        st.sidebar.header(f"✏️ Editing: {event['title']}")
-
-        cur_lat = event["location"]["latitude"]
-        cur_lon = event["location"]["longitude"]
-
-        if st.session_state.latitude == 1.11:
-            st.session_state.latitude = cur_lat
-        if st.session_state.longitude == 1.11:
-            st.session_state.longitude = cur_lon
-
-        st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-        #st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
-
-        #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-        #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
-
-        new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
-        new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
-
-        for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
-            st.sidebar.markdown(f"### Current {label}")
-            paths = event["media"].get(mtype, []).copy()
-            if paths:
-                cols = st.sidebar.columns(3 if mtype == "photos" else 2)
-                for i, p in enumerate(paths):
-                    if os.path.exists(p):
-                        with cols[i % len(cols)]:
-                            if mtype == "photos":
-                                st.image(p, width=150)
-                            else:
-                                st.video(p)
-                            if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
-                                os.remove(p)
-                                event["media"][mtype].remove(p)
-                                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-                                #                     encoding="utf-8")
-                                save_data_to_storage(st.session_state.data)
-                                st.rerun()
-            else:
-                st.sidebar.info(f"No {label.lower()}")
-
-        with st.sidebar.form("edit_form"):
-            if map_data and map_data.get("last_clicked"):
-                click = map_data["last_clicked"]
-                lat, lon = click["lat"], click["lng"]
-                #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-                #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-                st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-                #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-                #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-                #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-                st.session_state.latitude = lat
-                st.session_state.longitude = lon
-                pass
-            new_title = st.text_input("Title", event["title"])
-            new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-                                     min_value=datetime(1920, 1, 1).date(),
-                                     max_value=None)
-            #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
-            new_loc = st.text_input("Location Name", st.session_state.default_name)
-            new_desc = st.text_area("Description", event.get("description", ""))
-            add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
-                                          key=f"add_ph_{event['id']}")
-            add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
-                                          key=f"add_vid_{event['id']}")
-
-            if st.form_submit_button("💾 Save Changes", type="primary"):
-                event["location"]["latitude"] = new_lat
-                event["location"]["longitude"] = new_lon
-                event["title"] = new_title
-                event["date"] = new_date.strftime("%Y-%m-%d")
-                event["location"]["name"] = new_loc
-                event["description"] = new_desc
-
-                # --- Upload new photos (FIXED) ---
-                for up in add_photos or []:
-                    if up is not None:
-                        fname = f"{int(time.time())}_{up.name}"
-                        try:
-                            file_bytes = up.getvalue()
-                            if not file_bytes:
-                                continue
-                            if IS_CLOUD:
-                                url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-                            else:
-                                local_path = UPLOADS_PHOTOS / fname
-                                local_path.write_bytes(file_bytes)
-                                url = str(local_path)
-                            event["media"].setdefault("photos", []).append(url)
-                        except Exception as e:
-                            st.error(f"Failed to upload photo {up.name}: {e}")
-
-                # --- Upload new videos (FIXED) ---
-                for up in add_videos or []:
-                    if up is not None:
-                        fname = f"{int(time.time())}_{up.name}"
-                        try:
-                            file_bytes = up.getvalue()
-                            if not file_bytes:
-                                continue
-                            if IS_CLOUD:
-                                url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-                            else:
-                                local_path = UPLOADS_VIDEOS / fname
-                                local_path.write_bytes(file_bytes)
-                                url = str(local_path)
-                            event["media"].setdefault("videos", []).append(url)
-                        except Exception as e:
-                            st.error(f"Failed to upload video {up.name}: {e}")
-
-                # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-                save_data_to_storage(st.session_state.data)
-                st.session_state.force_map_refresh += 1
-                st.session_state.editing_event_id = None
-                st.success("Changes saved!")
-                st.rerun()
-
-            if st.sidebar.button("Cancel Editing"):
-                st.session_state.editing_event_id = None
-                st.rerun()
-
-
+# # ==================== EDITING EXISTING EVENT ====================
+# if st.session_state.editing_event_id:
+#     logger.info(f" pass EDITING  EXISTING EVENT")
+#     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
+#     if event:
+#         if map_data and map_data.get("last_clicked"):
+#             click = map_data["last_clicked"]
+#             lat, lon = click["lat"], click["lng"]
+#             st.session_state.latitude = lat
+#             st.session_state.longitude = lon
+#             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+#             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+#             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+#             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+#             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+#
+#         st.sidebar.header(f"✏️ Editing: {event['title']}")
+#
+#         cur_lat = event["location"]["latitude"]
+#         cur_lon = event["location"]["longitude"]
+#
+#         if st.session_state.latitude == 1.11:
+#             st.session_state.latitude = cur_lat
+#         if st.session_state.longitude == 1.11:
+#             st.session_state.longitude = cur_lon
+#
+#         st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+#         #st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
+#
+#         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
+#         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
+#
+#         new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
+#         new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
+#
+#         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
+#             st.sidebar.markdown(f"### Current {label}")
+#             paths = event["media"].get(mtype, []).copy()
+#             if paths:
+#                 cols = st.sidebar.columns(3 if mtype == "photos" else 2)
+#                 for i, p in enumerate(paths):
+#                     if os.path.exists(p):
+#                         with cols[i % len(cols)]:
+#                             if mtype == "photos":
+#                                 st.image(p, width=150)
+#                             else:
+#                                 st.video(p)
+#                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
+#                                 os.remove(p)
+#                                 event["media"][mtype].remove(p)
+#                                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
+#                                 #                     encoding="utf-8")
+#                                 save_data_to_storage(st.session_state.data)
+#                                 st.rerun()
+#             else:
+#                 st.sidebar.info(f"No {label.lower()}")
+#
+#         with st.sidebar.form("edit_form"):
+#             if map_data and map_data.get("last_clicked"):
+#                 click = map_data["last_clicked"]
+#                 lat, lon = click["lat"], click["lng"]
+#                 #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+#                 #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+#                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+#                 #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+#                 #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+#                 #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+#                 st.session_state.latitude = lat
+#                 st.session_state.longitude = lon
+#                 pass
+#             new_title = st.text_input("Title", event["title"])
+#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
+#                                      min_value=datetime(1920, 1, 1).date(),
+#                                      max_value=None)
+#             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
+#             new_loc = st.text_input("Location Name", st.session_state.default_name)
+#             new_desc = st.text_area("Description", event.get("description", ""))
+#             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
+#                                           key=f"add_ph_{event['id']}")
+#             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
+#                                           key=f"add_vid_{event['id']}")
+#
+#             if st.form_submit_button("💾 Save Changes", type="primary"):
+#                 event["location"]["latitude"] = new_lat
+#                 event["location"]["longitude"] = new_lon
+#                 event["title"] = new_title
+#                 event["date"] = new_date.strftime("%Y-%m-%d")
+#                 event["location"]["name"] = new_loc
+#                 event["description"] = new_desc
+#
+#                 # --- Upload new photos (FIXED) ---
+#                 for up in add_photos or []:
+#                     if up is not None:
+#                         fname = f"{int(time.time())}_{up.name}"
+#                         try:
+#                             file_bytes = up.getvalue()
+#                             if not file_bytes:
+#                                 continue
+#                             if IS_CLOUD:
+#                                 url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
+#                             else:
+#                                 local_path = UPLOADS_PHOTOS / fname
+#                                 local_path.write_bytes(file_bytes)
+#                                 # url = str(local_path)
+#                                 url = to_relative_path(local_path)
+#                             event["media"].setdefault("photos", []).append(url)
+#                         except Exception as e:
+#                             st.error(f"Failed to upload photo {up.name}: {e}")
+#
+#                 # --- Upload new videos (FIXED) ---
+#                 for up in add_videos or []:
+#                     if up is not None:
+#                         fname = f"{int(time.time())}_{up.name}"
+#                         try:
+#                             file_bytes = up.getvalue()
+#                             if not file_bytes:
+#                                 continue
+#                             if IS_CLOUD:
+#                                 url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
+#                             else:
+#                                 local_path = UPLOADS_VIDEOS / fname
+#                                 local_path.write_bytes(file_bytes)
+#                                 #url = str(local_path)
+#                                 url = to_relative_path(local_path)
+#                             event["media"].setdefault("videos", []).append(url)
+#                         except Exception as e:
+#                             st.error(f"Failed to upload video {up.name}: {e}")
+#
+#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
+#                 save_data_to_storage(st.session_state.data)
+#                 st.session_state.force_map_refresh += 1
+#                 st.session_state.editing_event_id = None
+#                 st.success("Changes saved!")
+#                 st.rerun()
+#
+#             if st.sidebar.button("Cancel Editing"):
+#                 st.session_state.editing_event_id = None
+#                 st.rerun()
+#
+#
 
 
 
