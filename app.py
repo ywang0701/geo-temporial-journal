@@ -659,7 +659,10 @@ def get_color_by_year(d):
 def build_popup_html(event):
     title = html.escape(event.get('title', 'Untitled'))
     desc = html.escape(event.get('description', '') or 'No description')
-    loc = html.escape(event['location']['name'])
+    if event['location']['name']:
+        loc = html.escape(event['location']['name'])
+    else:
+        loc = html.escape("Location and Name ")
 
     popup = f"""
     <div style="width:380px;max-height:550px;overflow-y:auto;padding:8px;font-family:sans-serif;">
@@ -2240,20 +2243,26 @@ if st.session_state.editing_event_id:
         if map_data and map_data.get("last_clicked"):
             click = map_data["last_clicked"]
             lat, lon = click["lat"], click["lng"]
+            st.session_state.latitude = lat
+            st.session_state.longitude = lon
             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-            st.session_state.latitude = lat
-            st.session_state.longitude = lon
 
         st.sidebar.header(f"✏️ Editing: {event['title']}")
 
         cur_lat = event["location"]["latitude"]
         cur_lon = event["location"]["longitude"]
-        #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-        st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
+
+        if st.session_state.latitude == 1.11:
+            st.session_state.latitude = cur_lat
+        if st.session_state.longitude == 1.11:
+            st.session_state.longitude = cur_lon
+
+        st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
+        #st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
 
         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
@@ -2450,16 +2459,16 @@ for idx, event in enumerate(sorted_events, start=1):
                 with col_lat:
                     new_lat = st.number_input(
                         "Latitude",
-                        value=lat_value,
-                        #value=float(event["location"]["latitude"]),
+                        #value=lat_value,
+                        value=float(event["location"]["latitude"]),
                         format="%.6f", step=0.000001,
                         key=f"lat_{event['id']}"
                     )
                 with col_lon:
                     new_lon = st.number_input(
                         "Longitude",
-                        value=lon_value,
-                        #value=float(event["location"]["longitude"]),
+                        #value=lon_value,
+                        value=float(event["location"]["longitude"]),
                         format="%.6f", step=0.000001,
                         key=f"lon_{event['id']}"
                     )
