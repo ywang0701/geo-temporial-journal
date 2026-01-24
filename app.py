@@ -358,6 +358,50 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     kml.save(output_filename)
     return output_filename
 
+def export_to_kml_bytes(events) -> bytes:
+    kml = simplekml.Kml(name="My Journey with Timeline", open=1)
+
+    sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    path_coords = []
+
+    journey_line = kml.newlinestring(name="Journey Path")
+    journey_line.style.linestyle.color = simplekml.Color.teal
+    journey_line.style.linestyle.width = 5
+    journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
+
+    for idx, event in enumerate(sorted_events, 1):
+        try:
+            lat = float(event["location"]["latitude"])
+            lon = float(event["location"]["longitude"])
+            coord = (lon, lat)
+            path_coords.append(coord)
+
+            title = event.get("title", f"Memory #{idx}")
+            date_str = event.get("date", None)
+            desc = event.get("description", "No description")
+
+            pnt = kml.newpoint(
+                name=f"{idx}. {date_str or 'Unknown'} – {title}",
+                description=desc,
+                coords=[coord]
+            )
+            pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
+            pnt.style.iconstyle.scale = 1.1
+
+            if date_str:
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    pnt.timestamp.when = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
+                except ValueError:
+                    pass
+        except Exception:
+            continue
+
+    if len(path_coords) >= 2:
+        journey_line.coords = path_coords
+
+    return kml.kml().encode("utf-8")
+
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
@@ -2202,7 +2246,7 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
 
     available_journeys = get_local_json_files()
-
+    kml_bytes = export_to_kml_bytes(temp_data["events"])
     if not available_journeys:
         st.info("No journeys available to download.")
     else:
@@ -2240,19 +2284,29 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
                     base_name = journey_to_kml.replace(".json", "")
                     kml_filename = f"{base_name}_journey_{timestamp}.kml"
 
-                    # Create KML file (using your existing function)
-                    export_to_kml(temp_data["events"], kml_filename)
-
-                    # Read the file for download
-                    with open(kml_filename, "rb") as f:
-                        st.download_button(
-                            label="⬇️ Download KML Now",
-                            data=f,
-                            file_name=kml_filename,  # ← now uses selected journey name
-                            mime="application/vnd.google-earth.kml+xml",
-                            use_container_width=True,
-                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
-                        )
+                    st.download_button(
+                        label="⬇️ Download KML Now",
+                        #data=f,
+                        data=kml_bytes,
+                        file_name=kml_filename,  # ← now uses selected journey name
+                        mime="application/vnd.google-earth.kml+xml",
+                        use_container_width=True,
+                        key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                    )
+                    # # Create KML file (using your existing function)
+                    # export_to_kml(temp_data["events"], kml_filename)
+                    #
+                    # # Read the file for download
+                    # with open(kml_filename, "rb") as f:
+                    #     st.download_button(
+                    #         label="⬇️ Download KML Now",
+                    #         #data=f,
+                    #         data=kml_bytes,
+                    #         file_name=kml_filename,  # ← now uses selected journey name
+                    #         mime="application/vnd.google-earth.kml+xml",
+                    #         use_container_width=True,
+                    #         key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                    #     )
 
                     st.markdown("""
                     **How to open:**
@@ -2271,7 +2325,7 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
 
 # ==================== DOWNLOAD JSON's MEDIA FILES ) ====================
 
-with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
+with st.sidebar.expander("📦 Download Package (JSON + Media)", expanded=False):
     st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
 
     available_journeys = get_local_json_files()
@@ -2345,7 +2399,7 @@ with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expande
 #
 
 
-with st.sidebar.expander("📦 Upload Journey Package (Restore JSON + Media)", expanded=False):
+with st.sidebar.expander("📦 Upload Package (JSON + Media)", expanded=False):
     if st.session_state.current_journey_locked:
         st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
         st.caption("Switch to an unlocked journey to use this feature.")
