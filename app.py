@@ -1,5 +1,8 @@
 #import select
-# COPY .streamlit/ ./.streamlit/ Dockerfile
+# COPY .streamlit/ ./.streamlit/
+# [server]
+# enableXsrfProtection = false
+# enableCORS = false
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -82,7 +85,14 @@ st.session_state.latitude = 1.11
 st.session_state.longitude = 1.11
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
 # IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
-IS_CLOUD = False # HF is local  CLOUD is GCP
+#IS_CLOUD = False # HF is local  CLOUD is GCP
+
+# ---- ENV DETECTION ----
+IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
+IS_CLOUD = IS_HF                     # treat HF as cloud backend
+
+
+
 try:
     repo_root = Path(__file__).resolve().parents[1]
     config_path = repo_root / ".streamlit" / "config.toml"
@@ -94,22 +104,49 @@ try:
 except Exception as e:
     st.sidebar.warning(f"Could not read config.toml: {e}")
 
+def init_gcs_bucket_from_env():
+    """
+    Hugging Face MVP:
+      - Secret: GCP_SA_JSON (full service account json)
+      - Variable: GCS_BUCKET_NAME
+    """
+    sa_json = os.getenv("GCP_SA_JSON")
+    bucket_name = os.getenv("GCS_BUCKET_NAME")
+
+    if not sa_json:
+        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
+    if not bucket_name:
+        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+
+    sa_info = json.loads(sa_json)
+    creds = service_account.Credentials.from_service_account_info(sa_info)
+    client = storage.Client(credentials=creds, project=sa_info["project_id"])
+    return client.bucket(bucket_name)
+
+
+# if IS_CLOUD:
+#     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
+#
+#     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
+#     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
+#
+#     # Create client with explicit credentials and project
+#     storage_client = storage.Client(
+#         credentials=credentials,
+#         project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
+#     )
+#     bucket = storage_client.bucket(BUCKET_NAME)
+#     # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
+# else:
+#     st.sidebar.info("🖥️ Running locally (using filesystem)")
+#     # Your local fallback code (UPLOADS_PHOTOS, etc.)
+
 if IS_CLOUD:
-    st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
-
-    # Load credentials from secrets (must be under [gcs] or [connections.gcs])
-    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
-
-    # Create client with explicit credentials and project
-    storage_client = storage.Client(
-        credentials=credentials,
-        project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
-    )
-    bucket = storage_client.bucket(BUCKET_NAME)
-    # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
+    st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
+    bucket = init_gcs_bucket_from_env()
 else:
-    st.sidebar.info("🖥️ Running locally (using filesystem)")
-    # Your local fallback code (UPLOADS_PHOTOS, etc.)
+    st.sidebar.info("🖥️ Running locally (filesystem)")
+
 
 def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
     blob = bucket.blob(destination_blob_name)
@@ -121,8 +158,16 @@ def download_from_gcs(blob_name):
     return blob.download_as_bytes()
 
 
+# def list_journey_blobs():
+#     return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
+
 def list_journey_blobs():
-    return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
+    # returns full blob names like "journeys/xxx.json"
+    return [
+        blob.name
+        for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/")
+        if blob.name.endswith(".json")
+    ]
 
 
 def get_json_path(json_name):
@@ -418,12 +463,22 @@ def get_sorted_events_with_index():
     return list(enumerate(sorted_events, start=1))  # (1-based index, event)
 
 def get_local_json_files():
-    """Scan the current directory for .json files (excluding hidden and system files)"""
-    json_files = []
-    for item in BASE_DIR.iterdir():
-        if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
-            json_files.append(item.name)
-    return sorted(json_files)
+    if IS_CLOUD:
+        blobs = list_journey_blobs()
+        return sorted([os.path.basename(b) for b in blobs])
+    else:
+        return sorted([
+            f.name for f in BASE_DIR.iterdir()
+            if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")
+        ])
+
+# def get_local_json_files():
+#     """Scan the current directory for .json files (excluding hidden and system files)"""
+#     json_files = []
+#     for item in BASE_DIR.iterdir():
+#         if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
+#             json_files.append(item.name)
+#     return sorted(json_files)
 
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
@@ -589,14 +644,14 @@ if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
-# List journeys
-def get_local_json_files():
-    #if os.getenv("K_SERVICE1"):
-    if IS_CLOUD:
-        blobs = list_journey_blobs()
-        return [os.path.basename(b) for b in blobs]
-    else:
-        return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
+# # List journeys
+# def get_local_json_files():
+#     #if os.getenv("K_SERVICE1"):
+#     if IS_CLOUD:
+#         blobs = list_journey_blobs()
+#         return [os.path.basename(b) for b in blobs]
+#     else:
+#         return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
 
 ensure_valid_json()
 
@@ -668,8 +723,10 @@ def get_media_bytes(media_path):
         parts = media_path[5:].split("/", 1)
         bucket_name = parts[0]
         blob_path = parts[1] if len(parts) > 1 else ""
-        blob = storage.Client().bucket(bucket_name).blob(blob_path)
-        return blob.download_as_bytes()
+        client = bucket.client
+        return client.bucket(bucket_name).blob(blob_path).download_as_b()
+        #blob = storage.Client().bucket(bucket_name).blob(blob_path)
+        #return blob.download_as_bytes()
     else:
         path = Path(media_path)
         if not path.exists():
@@ -725,7 +782,10 @@ def gcs_bytes_from_gs_uri(gs_uri: str) -> bytes:
     parts = gs_uri[5:].split("/", 1)
     bucket_name = parts[0]
     blob_path = parts[1] if len(parts) > 1 else ""
-    return storage.Client().bucket(bucket_name).blob(blob_path).download_as_bytes()
+
+    client = bucket.client
+    return  client.bucket(bucket_name).blob(blob_path).download_as_bytes()
+    #return storage.Client().bucket(bucket_name).blob(blob_path).download_as_bytes()
 
 def media_bytes_anywhere(media_path: str) -> bytes | None:
     try:
