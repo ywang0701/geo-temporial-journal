@@ -23,6 +23,10 @@ from google.oauth2 import service_account
 import simplekml
 import re
 import toml
+import io
+import zipfile
+import mimetypes
+
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -658,6 +662,156 @@ def get_color_by_year(d):
     else:
         return "red"
 
+def _norm_rel_path(p: str) -> str:
+    # store paths consistently for zip internal names (no leading ./)
+    return p.lstrip("/").lstrip("\\")
+
+def resolve_local_path(p: str) -> Path:
+    """
+    Your JSON sometimes stores relative paths (uploads/photos/..).
+    Convert to absolute local filesystem path for reading/writing.
+    """
+    pp = Path(p)
+    if pp.is_absolute():
+        return pp
+    return (BASE_DIR / pp).resolve()
+
+def gcs_bytes_from_gs_uri(gs_uri: str) -> bytes:
+    # gs://bucket/blob
+    parts = gs_uri[5:].split("/", 1)
+    bucket_name = parts[0]
+    blob_path = parts[1] if len(parts) > 1 else ""
+    return storage.Client().bucket(bucket_name).blob(blob_path).download_as_bytes()
+
+def media_bytes_anywhere(media_path: str) -> bytes | None:
+    try:
+        if media_path.startswith("gs://"):
+            return gcs_bytes_from_gs_uri(media_path)
+        else:
+            lp = resolve_local_path(media_path)
+            if lp.exists():
+                return lp.read_bytes()
+            return None
+    except Exception:
+        return None
+
+def guess_mime(filename: str) -> str:
+    mt, _ = mimetypes.guess_type(filename)
+    return mt or "application/octet-stream"
+
+def zip_journey_package(journey_filename: str) -> bytes:
+    """
+    Create a ZIP that contains:
+      - journeys/<journey_filename>  (the JSON)
+      - media/photos/<files>
+      - media/videos/<files>
+      - manifest.json (mapping original media paths -> zip paths)
+    """
+    # Load JSON bytes
+    if IS_CLOUD:
+        json_bytes = download_from_gcs(get_json_path(journey_filename))
+    else:
+        json_bytes = (BASE_DIR / journey_filename).read_bytes()
+
+    data = json.loads(json_bytes.decode("utf-8"))
+
+    # Build manifest + collect media
+    manifest = {
+        "journey_filename": journey_filename,
+        "created_at": datetime.now().isoformat(),
+        "media": []  # list of { "original": "...", "zip_path": "media/photos/xxx.jpg" }
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        # JSON inside zip (keep under journeys/)
+        z.writestr(f"journeys/{journey_filename}", json_bytes)
+
+        # walk events media
+        for ev in data.get("events", []):
+            media = ev.get("media", {}) or {}
+            for kind in ["photos", "videos"]:
+                for mp in media.get(kind, []) or []:
+                    b = media_bytes_anywhere(mp)
+                    if not b:
+                        continue
+
+                    fn = os.path.basename(mp) or f"{kind}_{ev.get('id','x')}"
+                    zip_path = f"media/{kind}/{fn}"
+                    # avoid collisions by prefixing event id if needed
+                    if zip_path in z.namelist():
+                        zip_path = f"media/{kind}/event{ev.get('id','x')}_{fn}"
+
+                    z.writestr(zip_path, b)
+                    manifest["media"].append({"original": mp, "zip_path": zip_path, "kind": kind})
+
+        z.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8"))
+
+    return buf.getvalue()
+
+def restore_journey_package(zip_bytes: bytes) -> tuple[str, dict]:
+    """
+    Restore a ZIP created by zip_journey_package().
+    Writes media to:
+      - GCS: photos/... and videos/...
+      - Local: uploads/photos/... and uploads/videos/...
+    Then writes the JSON journey file and updates media paths to the new storage locations.
+
+    Returns: (restored_journey_filename, restored_data)
+    """
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
+        # Load manifest
+        manifest = json.loads(z.read("manifest.json").decode("utf-8"))
+
+        journey_filename = manifest["journey_filename"]
+        json_zip_path = f"journeys/{journey_filename}"
+        data = json.loads(z.read(json_zip_path).decode("utf-8"))
+
+        # Map original -> new path after restore
+        path_map = {}
+
+        # Restore media files
+        for item in manifest.get("media", []):
+            original = item["original"]
+            zip_path = item["zip_path"]
+            kind = item.get("kind", "photos")
+
+            file_bytes = z.read(zip_path)
+            fn = os.path.basename(zip_path)
+
+            if IS_CLOUD:
+                # store in your bucket folders: photos/ and videos/
+                if kind == "photos":
+                    new_url = upload_to_gcs(file_bytes, f"{PHOTOS_FOLDER}/{fn}", guess_mime(fn))
+                else:
+                    new_url = upload_to_gcs(file_bytes, f"{VIDEOS_FOLDER}/{fn}", guess_mime(fn))
+                path_map[original] = new_url
+            else:
+                if kind == "photos":
+                    out = UPLOADS_PHOTOS / fn
+                else:
+                    out = UPLOADS_VIDEOS / fn
+                out.write_bytes(file_bytes)
+                path_map[original] = to_relative_path(out)
+
+        # Rewrite JSON media paths
+        for ev in data.get("events", []):
+            media = ev.get("media", {}) or {}
+            for kind in ["photos", "videos"]:
+                new_list = []
+                for mp in media.get(kind, []) or []:
+                    new_list.append(path_map.get(mp, mp))
+                media[kind] = new_list
+            ev["media"] = media
+
+        # Save JSON back to storage
+        json_text = json.dumps(data, indent=4, ensure_ascii=False).encode("utf-8")
+        if IS_CLOUD:
+            upload_to_gcs(json_text, get_json_path(journey_filename), "application/json")
+        else:
+            (BASE_DIR / journey_filename).write_bytes(json_text)
+
+        return journey_filename, data
 
 # ==================== POPUP ====================
 def build_popup_html(event):
@@ -1811,6 +1965,42 @@ with st.sidebar.expander("📥 Backup Journey", expanded=False):
             st.error("Could not load journey data for download.")
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
 
+# ==================== DOWNLOAD JOURNEY Media files ` ====================
+with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
+    st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
+
+    available_journeys = get_local_json_files()
+    if not available_journeys:
+        st.info("No journeys available.")
+    else:
+        journey_pkg = st.selectbox(
+            "Choose a journey to package",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            key="pkg_download_select"
+        )
+
+        if journey_pkg:
+            try:
+                zip_bytes = zip_journey_package(journey_pkg)
+
+                ts = datetime.now().strftime("%Y%m%d_%H%M")
+                base = journey_pkg.replace(".json", "")
+                zip_name = f"{base}_package_{ts}.zip"
+
+                st.download_button(
+                    "⬇️ Download Package ZIP",
+                    data=zip_bytes,
+                    file_name=zip_name,
+                    mime="application/zip",
+                    use_container_width=True,
+                    key=f"download_pkg_{journey_pkg}_{ts}"
+                )
+                st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
+            except Exception as e:
+                st.error(f"Failed to build package: {e}")
+
+
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
@@ -1974,6 +2164,137 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
             except Exception as e:
                 st.error(f"Error reading file: {e}")
 
+# ==================== DOWNLOAD JSON's MEDIA FILES ) ====================
+
+with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
+    st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
+
+    available_journeys = get_local_json_files()
+    if not available_journeys:
+        st.info("No journeys available.")
+    else:
+        journey_pkg = st.selectbox(
+            "Choose a journey to package",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            key="media_download_select"
+        )
+
+        if journey_pkg:
+            try:
+                zip_bytes = zip_journey_package(journey_pkg)
+
+                ts = datetime.now().strftime("%Y%m%d_%H%M")
+                base = journey_pkg.replace(".json", "")
+                zip_name = f"{base}_package_{ts}.zip"
+
+                st.download_button(
+                    "⬇️ Download Package ZIP",
+                    data=zip_bytes,
+                    file_name=zip_name,
+                    mime="application/zip",
+                    use_container_width=True,
+                    key=f"download_media_{journey_pkg}_{ts}"
+                )
+                st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
+            except Exception as e:
+                st.error(f"Failed to build package: {e}")
+
+
+# # ==================== Upload JSON's MEDIA FILES ) ====================
+# with st.sidebar.expander("📦 Upload Journey Package (Restore JSON + Media)", expanded=False):
+#     if st.session_state.current_journey_locked:
+#         st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
+#         st.caption("Switch to an unlocked journey to use this feature.")
+#     else:
+#         st.write("Upload a package ZIP to restore the journey JSON and **re-upload all media**.")
+#
+#         pkg_up = st.file_uploader(
+#             "Select a journey package ZIP",
+#             type=["zip"],
+#             key="pkg_restore_uploader"
+#         )
+#
+#         if pkg_up is not None:
+#             try:
+#                 zip_bytes = pkg_up.read()
+#                 restored_name, restored_data = restore_journey_package(zip_bytes)
+#
+#                 title = restored_data.get("autobiography", {}).get("title", restored_name.replace(".json", ""))
+#                 count = len(restored_data.get("events", []))
+#
+#                 st.success(f"✅ Restored: **{title}** ({count} memories) → `{restored_name}`")
+#
+#                 # switch to restored journey
+#                 st.session_state.selected_json_file = restored_name
+#                 st.session_state.current_journey_locked = is_journey_locked(restored_name)
+#
+#                 st.cache_data.clear()
+#                 if "data" in st.session_state:
+#                     del st.session_state["data"]
+#                 st.session_state.force_map_refresh += 1
+#                 st.rerun()
+#
+#             except Exception as e:
+#                 st.error(f"Restore failed: {e}")
+#
+
+
+with st.sidebar.expander("📦 Upload Journey Package (Restore JSON + Media)", expanded=False):
+    if st.session_state.current_journey_locked:
+        st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
+        st.caption("Switch to an unlocked journey to use this feature.")
+    else:
+        st.write("Upload a package ZIP to restore the journey JSON and **re-upload all media**.")
+
+        # init guard state
+        st.session_state.setdefault("pkg_last_fingerprint", None)
+        st.session_state.setdefault("pkg_restored_ok", False)
+
+        pkg_up = st.file_uploader(
+            "Select a journey package ZIP",
+            type=["zip"],
+            key="pkg_restore_uploader"
+        )
+
+        if pkg_up is not None:
+            fp = (pkg_up.name, getattr(pkg_up, "size", None))
+
+            col1, col2 = st.columns([1, 1])
+            do_restore = col1.button("✅ Restore package", use_container_width=True)
+            col2.button("🧹 Reset uploader", use_container_width=True, on_click=lambda: st.session_state.pop("pkg_restore_uploader", None))
+
+            if do_restore:
+                if st.session_state.pkg_last_fingerprint == fp and st.session_state.pkg_restored_ok:
+                    st.info("This package has already been restored in this session.")
+                else:
+                    try:
+                        zip_bytes = pkg_up.read()
+                        restored_name, restored_data = restore_journey_package(zip_bytes)
+
+                        title = restored_data.get("autobiography", {}).get("title", restored_name.replace(".json", ""))
+                        count = len(restored_data.get("events", []))
+
+                        st.success(f"✅ Restored: **{title}** ({count} memories) → `{restored_name}`")
+
+                        # mark processed BEFORE rerun
+                        st.session_state.pkg_last_fingerprint = fp
+                        st.session_state.pkg_restored_ok = True
+
+                        # switch to restored journey
+                        st.session_state.selected_json_file = restored_name
+                        st.session_state.current_journey_locked = is_journey_locked(restored_name)
+
+                        st.cache_data.clear()
+                        st.session_state.pop("data", None)
+
+                        # Important: only one of these is needed; keep force_map_refresh if your map uses it
+                        st.session_state.force_map_refresh += 1
+
+                        st.rerun()
+                    except Exception as e:
+                        st.session_state.pkg_restored_ok = False
+                        st.error(f"Restore failed: {e}")
 
 # ==================== DELETE JOURNEY FILE (GCS + Local Compatible) ====================
 if not st.session_state.current_journey_locked:
