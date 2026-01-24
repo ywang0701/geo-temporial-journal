@@ -1798,119 +1798,221 @@ if not st.session_state.current_journey_locked:
                         if st.button("❌ Cancel", type="secondary", use_container_width=True):
                             st.rerun()
 
-    # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
+    # ==================== RENAME JOURNEY (FIXED + ALWAYS SHOW BUTTON) ====================
     with st.sidebar.expander("✏️ Rename Journey", expanded=False):
         st.write("Change the name of an existing journey. This renames the file and updates the title.")
 
         available_journeys = get_local_json_files()
-
         if not available_journeys:
             st.info("No journeys available to rename.")
         else:
-            # Select journey to rename
             journey_to_rename = st.selectbox(
                 "Select journey to rename",
                 options=available_journeys,
                 index=available_journeys.index(st.session_state.selected_json_file)
                 if st.session_state.selected_json_file in available_journeys else 0,
-                help="Choose the journey you want to rename"
+                help="Choose the journey you want to rename",
+                key="rename_select"
             )
 
-            # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
             blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
+
             try:
                 current_data = load_data_from_file(blob_or_path)
-                current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
+                current_title = current_data.get("autobiography", {}).get(
+                    "title", journey_to_rename.replace(".json", "")
+                )
                 event_count = len(current_data.get("events", []))
-
-                # Format nice display name
-                current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
-                current_display = " ".join(word.capitalize() for word in current_display.split())
-
-                st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
+                st.info(f"**Current:** {current_title} • {event_count} memories • File: `{journey_to_rename}`")
             except Exception as e:
                 st.error(f"Could not load journey data: {e}")
-                current_display = journey_to_rename.replace(".json", "")
-                current_title = current_display
                 current_data = None
+                current_title = journey_to_rename.replace(".json", "")
+            # Use a form so the submit button is stable and always visible
+            with st.form("rename_form", clear_on_submit=False):
+                default_new_nme = f"{current_title} new_name"
+                new_journey_name = st.text_input(
+                    "New Journey Name*",
+                    value=default_new_nme,
+                    placeholder="e.g., Europe Adventure 2025",
+                    help="This will become the new display title and filename",
+                    key="rename_new_title"
+                )
 
-            # === NOW USE current_display SAFELY ===
-            new_journey_name = st.text_input(
-                "New Journey Name*",
-                value=current_title,  # Pre-fill with actual title, not filename
-                placeholder="e.g., Europe Adventure 2025",
-                help="This will become the new display title and filename"
-            )
+                # Prepare validation
+                name_ok = bool(new_journey_name and new_journey_name.strip())
+                same_as_current = (new_journey_name.strip() == current_title.strip()) if name_ok else True
 
-            if new_journey_name and new_journey_name.strip():
-                if new_journey_name.strip() == current_title:
-                    st.info("New name is the same as current — nothing to do.")
-                else:
-                    # Clean for safe filename
-                    clean_name = (
-                        new_journey_name.strip()
-                        .lower()
-                        .replace(" ", "-")
-                        .replace("_", "-")
-                        .replace("/", "")
-                        .replace("\\", "")
-                        .replace(".", "")
-                    )
-                    if not clean_name:
-                        st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
+                clean_name = (
+                    new_journey_name.strip()
+                    .lower()
+                    .replace(" ", "-")
+                    .replace("_", "-")
+                    .replace("/", "")
+                    .replace("\\", "")
+                    .replace(".", "")
+                ) if name_ok else ""
+
+                clean_ok = bool(clean_name)
+                new_filename = f"{clean_name}.json" if clean_ok else ""
+                exists_conflict = (new_filename in available_journeys) if new_filename else False
+
+                # Always show the button; disable if not valid
+                can_rename = (current_data is not None) and name_ok and (not same_as_current) and clean_ok and (
+                    not exists_conflict)
+
+                submitted = st.form_submit_button("💾 Save (Rename Journey)", type="primary", disabled=not can_rename)
+
+            # Show guidance messages (outside form so it doesn’t break button rendering)
+            if name_ok and same_as_current:
+                st.caption("New name is the same as current — nothing to do.")
+            elif name_ok and clean_ok and exists_conflict:
+                st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+            elif name_ok and not clean_ok:
+                st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
+
+            # Execute rename only after submit
+            if submitted and can_rename:
+                try:
+                    current_data["autobiography"]["title"] = new_journey_name.strip()
+                    current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+
+                    json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
+
+                    if IS_CLOUD:
+                        upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
+                        bucket.blob(get_json_path(journey_to_rename)).delete()
+                        st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
                     else:
-                        new_filename = f"{clean_name}.json"
-                        new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
+                        (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
+                        (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
+                        st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
 
-                        # Check if new filename already exists
-                        if new_filename in available_journeys:
-                            st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
-                        else:
-                            col_rename, col_cancel = st.columns(2)
-                            with col_rename:
-                                if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
-                                    if current_data is None:
-                                        st.error("Cannot rename: failed to load current journey data.")
-                                    else:
-                                        try:
-                                            # Update title in data
-                                            current_data["autobiography"]["title"] = new_journey_name.strip()
-                                            current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+                    # Update selected journey only AFTER success
+                    if journey_to_rename == st.session_state.selected_json_file:
+                        st.session_state.selected_json_file = new_filename
 
-                                            json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
+                    st.cache_data.clear()
+                    st.session_state.pop("data", None)
+                    st.rerun()
 
-                                            # Save to new location
-                                            if IS_CLOUD:
-                                                upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
-                                                # Delete old blob
-                                                bucket.blob(get_json_path(journey_to_rename)).delete()
-                                                st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
-                                            else:
-                                                (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
-                                                (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
-                                                st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
+                except Exception as e:
+                    st.error(f"Rename failed: {e}")
+                    logger.error(f"Rename error: {e}")
 
-                                            # If renaming the currently active journey, update session
-                                            if journey_to_rename == st.session_state.selected_json_file:
-                                                st.session_state.selected_json_file = new_filename
-                                                st.cache_data.clear()
-                                                if "data" in st.session_state:
-                                                    del st.session_state["data"]
-
-                                            st.rerun()
-
-                                        except Exception as e:
-                                            st.error(f"Rename failed: {e}")
-                                            logger.error(f"Rename error: {e}")
-                            st.session_state.selected_json_file = new_filename
-
-                            with col_cancel:
-                                st.button("❌ Cancel", type="secondary", use_container_width=True)
-            else:
-                st.warning("Please enter a new journey name.")
+    # # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
+    # with st.sidebar.expander("✏️ Rename Journey", expanded=False):
+    #     st.write("Change the name of an existing journey. This renames the file and updates the title.")
+    #
+    #     available_journeys = get_local_json_files()
+    #
+    #     if not available_journeys:
+    #         st.info("No journeys available to rename.")
+    #     else:
+    #         # Select journey to rename
+    #         journey_to_rename = st.selectbox(
+    #             "Select journey to rename",
+    #             options=available_journeys,
+    #             index=available_journeys.index(st.session_state.selected_json_file)
+    #             if st.session_state.selected_json_file in available_journeys else 0,
+    #             help="Choose the journey you want to rename"
+    #         )
+    #
+    #         # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
+    #         blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
+    #         try:
+    #             current_data = load_data_from_file(blob_or_path)
+    #             current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
+    #             event_count = len(current_data.get("events", []))
+    #
+    #             # Format nice display name
+    #             current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
+    #             current_display = " ".join(word.capitalize() for word in current_display.split())
+    #
+    #             st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
+    #         except Exception as e:
+    #             st.error(f"Could not load journey data: {e}")
+    #             current_display = journey_to_rename.replace(".json", "")
+    #             current_title = current_display
+    #             current_data = None
+    #
+    #         # === NOW USE current_display SAFELY ===
+    #         new_journey_name = st.text_input(
+    #             "New Journey Name*",
+    #             value=current_title,  # Pre-fill with actual title, not filename
+    #             placeholder="e.g., Europe Adventure 2025",
+    #             help="This will become the new display title and filename"
+    #         )
+    #
+    #         if new_journey_name and new_journey_name.strip():
+    #             if new_journey_name.strip() == current_title:
+    #                 st.info("New name is the same as current — nothing to do.")
+    #             else:
+    #                 # Clean for safe filename
+    #                 clean_name = (
+    #                     new_journey_name.strip()
+    #                     .lower()
+    #                     .replace(" ", "-")
+    #                     .replace("_", "-")
+    #                     .replace("/", "")
+    #                     .replace("\\", "")
+    #                     .replace(".", "")
+    #                 )
+    #                 if not clean_name:
+    #                     st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
+    #                 else:
+    #                     new_filename = f"{clean_name}.json"
+    #                     new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
+    #
+    #                     # Check if new filename already exists
+    #                     if new_filename in available_journeys:
+    #                         st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
+    #                     else:
+    #                         col_rename, col_cancel = st.columns(2)
+    #                         with col_rename:
+    #                             if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
+    #                                 if current_data is None:
+    #                                     st.error("Cannot rename: failed to load current journey data.")
+    #                                 else:
+    #                                     try:
+    #                                         # Update title in data
+    #                                         current_data["autobiography"]["title"] = new_journey_name.strip()
+    #                                         current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
+    #
+    #                                         json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
+    #
+    #                                         # Save to new location
+    #                                         if IS_CLOUD:
+    #                                             upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
+    #                                             # Delete old blob
+    #                                             bucket.blob(get_json_path(journey_to_rename)).delete()
+    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
+    #                                         else:
+    #                                             (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
+    #                                             (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
+    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
+    #
+    #                                         # If renaming the currently active journey, update session
+    #                                         if journey_to_rename == st.session_state.selected_json_file:
+    #                                             st.session_state.selected_json_file = new_filename
+    #                                             st.cache_data.clear()
+    #                                             if "data" in st.session_state:
+    #                                                 del st.session_state["data"]
+    #
+    #                                         st.rerun()
+    #
+    #                                     except Exception as e:
+    #                                         st.error(f"Rename failed: {e}")
+    #                                         logger.error(f"Rename error: {e}")
+    #                         st.session_state.selected_json_file = new_filename
+    #
+    #                     with col_cancel:
+    #                         st.button("❌ Cancel", type="secondary", use_container_width=True)
+    #         else:
+    #             st.warning("Please enter a new journey name.")
 
 # ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("📥 Backup Journey", expanded=False):
+with st.sidebar.expander("📥 Download Journey", expanded=False):
     st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
 
     available_journeys = get_local_json_files()
@@ -1964,112 +2066,6 @@ with st.sidebar.expander("📥 Backup Journey", expanded=False):
         except Exception as e:
             st.error("Could not load journey data for download.")
             logger.error(f"Failed to prepare download for {journey_to_download}: {e}")
-
-# ==================== DOWNLOAD JOURNEY Media files ` ====================
-with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
-    st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
-
-    available_journeys = get_local_json_files()
-    if not available_journeys:
-        st.info("No journeys available.")
-    else:
-        journey_pkg = st.selectbox(
-            "Choose a journey to package",
-            options=available_journeys,
-            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
-            key="pkg_download_select"
-        )
-
-        if journey_pkg:
-            try:
-                zip_bytes = zip_journey_package(journey_pkg)
-
-                ts = datetime.now().strftime("%Y%m%d_%H%M")
-                base = journey_pkg.replace(".json", "")
-                zip_name = f"{base}_package_{ts}.zip"
-
-                st.download_button(
-                    "⬇️ Download Package ZIP",
-                    data=zip_bytes,
-                    file_name=zip_name,
-                    mime="application/zip",
-                    use_container_width=True,
-                    key=f"download_pkg_{journey_pkg}_{ts}"
-                )
-                st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
-            except Exception as e:
-                st.error(f"Failed to build package: {e}")
-
-
-# ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
-with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
-    st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
-
-    available_journeys = get_local_json_files()
-
-    if not available_journeys:
-        st.info("No journeys available to download.")
-    else:
-        # Dropdown to select which journey to export as KML
-        journey_to_kml = st.selectbox(
-            "Choose a journey to export as KML",
-            options=available_journeys,
-            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
-            help="All journeys are listed, including the current one",
-            key="kml_select_journey"  # unique key so it doesn't conflict with others
-        )
-
-        if journey_to_kml:
-            # Load the selected journey data safely
-            try:
-                blob_or_path = get_json_path(journey_to_kml) if IS_CLOUD else str(BASE_DIR / journey_to_kml)
-                temp_data = load_data_from_file(blob_or_path)
-
-                title = temp_data.get("autobiography", {}).get("title", journey_to_kml.replace(".json", ""))
-                title_display = " ".join(
-                    word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
-                event_count = len(temp_data.get("events", []))
-
-                is_current = journey_to_kml == st.session_state.selected_json_file
-                current_label = " (current)" if is_current else ""
-                st.markdown(f"**{title_display}{current_label}**")
-                st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} will be exported from `{journey_to_kml}`")
-                # st.caption(f"Will export **{event_count}** location{'s' if event_count != 1 else ''}")
-
-                if event_count == 0:
-                    st.info("This journey has no memories yet — KML will be empty.")
-                else:
-                    # Generate filename based on **selected** journey
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-                    base_name = journey_to_kml.replace(".json", "")
-                    kml_filename = f"{base_name}_journey_{timestamp}.kml"
-
-                    # Create KML file (using your existing function)
-                    export_to_kml(temp_data["events"], kml_filename)
-
-                    # Read the file for download
-                    with open(kml_filename, "rb") as f:
-                        st.download_button(
-                            label="⬇️ Download KML Now",
-                            data=f,
-                            file_name=kml_filename,  # ← now uses selected journey name
-                            mime="application/vnd.google-earth.kml+xml",
-                            use_container_width=True,
-                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
-                        )
-
-                    st.markdown("""
-                    **How to open:**
-                    1. Go to https://www.google.com/mymaps
-                    2. Create a new map
-                    3. Click **Import** → choose the downloaded .kml file
-                    4. See your journey with points and connecting path!
-                    """)
-
-            except Exception as e:
-                st.error(f"Could not load or export {journey_to_kml}: {str(e)}")
-                logger.error(f"KML export error for {journey_to_kml}: {e}")
-
 
 # ==================== UPLOAD & RESTORE JSON (only when current journey is unlocked) ====================
 with st.sidebar.expander("📤 Upload Journey", expanded=False):
@@ -2163,6 +2159,115 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
                 st.error("Invalid JSON file — could not parse.")
             except Exception as e:
                 st.error(f"Error reading file: {e}")
+
+
+# # ==================== DOWNLOAD JOURNEY Media files ` ====================
+# with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
+#     st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
+#
+#     available_journeys = get_local_json_files()
+#     if not available_journeys:
+#         st.info("No journeys available.")
+#     else:
+#         journey_pkg = st.selectbox(
+#             "Choose a journey to package",
+#             options=available_journeys,
+#             format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+#             key="pkg_download_select"
+#         )
+#
+#         if journey_pkg:
+#             try:
+#                 zip_bytes = zip_journey_package(journey_pkg)
+#
+#                 ts = datetime.now().strftime("%Y%m%d_%H%M")
+#                 base = journey_pkg.replace(".json", "")
+#                 zip_name = f"{base}_package_{ts}.zip"
+#
+#                 st.download_button(
+#                     "⬇️ Download Package ZIP",
+#                     data=zip_bytes,
+#                     file_name=zip_name,
+#                     mime="application/zip",
+#                     use_container_width=True,
+#                     key=f"download_pkg_{journey_pkg}_{ts}"
+#                 )
+#                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
+#             except Exception as e:
+#                 st.error(f"Failed to build package: {e}")
+
+
+# ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
+with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
+    st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
+
+    available_journeys = get_local_json_files()
+
+    if not available_journeys:
+        st.info("No journeys available to download.")
+    else:
+        # Dropdown to select which journey to export as KML
+        journey_to_kml = st.selectbox(
+            "Choose a journey to export as KML",
+            options=available_journeys,
+            format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
+            help="All journeys are listed, including the current one",
+            key="kml_select_journey"  # unique key so it doesn't conflict with others
+        )
+
+        if journey_to_kml:
+            # Load the selected journey data safely
+            try:
+                blob_or_path = get_json_path(journey_to_kml) if IS_CLOUD else str(BASE_DIR / journey_to_kml)
+                temp_data = load_data_from_file(blob_or_path)
+
+                title = temp_data.get("autobiography", {}).get("title", journey_to_kml.replace(".json", ""))
+                title_display = " ".join(
+                    word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
+                event_count = len(temp_data.get("events", []))
+
+                is_current = journey_to_kml == st.session_state.selected_json_file
+                current_label = " (current)" if is_current else ""
+                st.markdown(f"**{title_display}{current_label}**")
+                st.caption(f"{event_count} memor{'y' if event_count == 1 else 'ies'} will be exported from `{journey_to_kml}`")
+                # st.caption(f"Will export **{event_count}** location{'s' if event_count != 1 else ''}")
+
+                if event_count == 0:
+                    st.info("This journey has no memories yet — KML will be empty.")
+                else:
+                    # Generate filename based on **selected** journey
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+                    base_name = journey_to_kml.replace(".json", "")
+                    kml_filename = f"{base_name}_journey_{timestamp}.kml"
+
+                    # Create KML file (using your existing function)
+                    export_to_kml(temp_data["events"], kml_filename)
+
+                    # Read the file for download
+                    with open(kml_filename, "rb") as f:
+                        st.download_button(
+                            label="⬇️ Download KML Now",
+                            data=f,
+                            file_name=kml_filename,  # ← now uses selected journey name
+                            mime="application/vnd.google-earth.kml+xml",
+                            use_container_width=True,
+                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                        )
+
+                    st.markdown("""
+                    **How to open:**
+                    1. Go to https://www.google.com/mymaps
+                    2. Create a new map
+                    3. Click **Import** → choose the downloaded .kml file
+                    4. See your journey with points and connecting path!
+                    """)
+
+            except Exception as e:
+                st.error(f"Could not load or export {journey_to_kml}: {str(e)}")
+                logger.error(f"KML export error for {journey_to_kml}: {e}")
+
+
+
 
 # ==================== DOWNLOAD JSON's MEDIA FILES ) ====================
 
