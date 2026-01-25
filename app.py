@@ -428,11 +428,74 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     kml.save(output_filename)
     return output_filename
 
+# def export_to_kml_bytes(events) -> bytes:
+#     kml = simplekml.Kml(name="My Journey with Timeline", open=1)
+#
+#     sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+#     path_coords = []
+#
+#     journey_line = kml.newlinestring(name="Journey Path")
+#     journey_line.style.linestyle.color = simplekml.Color.teal
+#     journey_line.style.linestyle.width = 5
+#     journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
+#
+#     for idx, event in enumerate(sorted_events, 1):
+#         try:
+#             lat = float(event["location"]["latitude"])
+#             lon = float(event["location"]["longitude"])
+#             coord = (lon, lat)
+#             path_coords.append(coord)
+#
+#             title = event.get("title", f"Memory #{idx}")
+#             date_str = event.get("date", None)
+#             desc = event.get("description", "No description")
+#
+#             pnt = kml.newpoint(
+#                 name=f"{idx}. {date_str or 'Unknown'} – {title}",
+#                 description=desc,
+#                 coords=[coord]
+#             )
+#             pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
+#             pnt.style.iconstyle.scale = 1.1
+#
+#             if date_str:
+#                 try:
+#                     dt = datetime.strptime(date_str, "%Y-%m-%d")
+#                     pnt.timestamp.when = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
+#                 except ValueError:
+#                     pass
+#         except Exception:
+#             continue
+#
+#     if len(path_coords) >= 2:
+#         journey_line.coords = path_coords
+#
+#     return kml.kml().encode("utf-8")
+
 def export_to_kml_bytes(events) -> bytes:
+    logger.info("=== KML EXPORT START ===")
+    logger.info(f"Input events count: {len(events)}")
+
+    if not events:
+        logger.info("No events received → returning minimal empty KML")
+        kml = simplekml.Kml(name="Empty Journey")
+        return kml.kml().encode("utf-8")
+
     kml = simplekml.Kml(name="My Journey with Timeline", open=1)
 
     sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    logger.info(f"Sorted events count: {len(sorted_events)}")
+
+    if sorted_events:
+        first = sorted_events[0]
+        logger.info("First event in sorted list:")
+        logger.info(f"  title    : {first.get('title', '(no title)')}")
+        logger.info(f"  date     : {first.get('date', '(no date)')}")
+        logger.info(f"  location : {first.get('location', '(no location)')}")
+
     path_coords = []
+    valid_count = 0
+    skipped_count = 0
 
     journey_line = kml.newlinestring(name="Journey Path")
     journey_line.style.linestyle.color = simplekml.Color.teal
@@ -440,35 +503,50 @@ def export_to_kml_bytes(events) -> bytes:
     journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
 
     for idx, event in enumerate(sorted_events, 1):
+        logger.info(f"── Event {idx} ──")
+        logger.info(f"  title: {event.get('title', '(no title)')}")
+
         try:
-            lat = float(event["location"]["latitude"])
-            lon = float(event["location"]["longitude"])
+            loc = event.get("location", {})
+            lat_raw = loc.get("latitude")
+            lon_raw = loc.get("longitude")
+
+            logger.info(f"  latitude raw  : {lat_raw!r} (type: {type(lat_raw).__name__})")
+            logger.info(f"  longitude raw : {lon_raw!r} (type: {type(lon_raw).__name__})")
+
+            if lat_raw is None or lon_raw is None:
+                logger.info(f"  → SKIPPED: missing lat or lon")
+                skipped_count += 1
+                continue
+
+            lat = float(lat_raw)
+            lon = float(lon_raw)
+
+            logger.info(f"  parsed → lat = {lat:.6f}, lon = {lon:.6f}")
+
+            # <=== your current coordinate logic goes here ===>
+
             coord = (lon, lat)
             path_coords.append(coord)
+            valid_count += 1
 
-            title = event.get("title", f"Memory #{idx}")
-            date_str = event.get("date", None)
-            desc = event.get("description", "No description")
+            logger.info(f"  → ADDED placemark (valid count now: {valid_count})")
 
-            pnt = kml.newpoint(
-                name=f"{idx}. {date_str or 'Unknown'} – {title}",
-                description=desc,
-                coords=[coord]
-            )
-            pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
-            pnt.style.iconstyle.scale = 1.1
+        except Exception as e:
+            logger.info(f"  → EXCEPTION: {type(e).__name__}: {str(e)}")
+            skipped_count += 1
 
-            if date_str:
-                try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    pnt.timestamp.when = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
-                except ValueError:
-                    pass
-        except Exception:
-            continue
+    logger.info(f"Loop finished. Valid placemarks: {valid_count}")
+    logger.info(f"Skipped events     : {skipped_count}")
+    logger.info(f"Path coords count  : {len(path_coords)}")
 
     if len(path_coords) >= 2:
         journey_line.coords = path_coords
+        logger.info("Journey path added")
+    else:
+        logger.info("No journey path added (too few valid points)")
+
+    logger.info("=== KML EXPORT FINISHED ===")
 
     return kml.kml().encode("utf-8")
 
@@ -2348,8 +2426,8 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
-
     available_journeys = get_local_json_files()
+    logger.info(f"About to export — passing {len(temp_data['events'])} events")
     kml_bytes = export_to_kml_bytes(temp_data["events"])
     if not available_journeys:
         st.info("No journeys available to download.")
@@ -2368,7 +2446,11 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
             try:
                 blob_or_path = get_json_path(journey_to_kml) if IS_CLOUD else str(BASE_DIR / journey_to_kml)
                 temp_data = load_data_from_file(blob_or_path)
-
+                logger.info(f"Loaded data for KML — keys: {list(temp_data.keys())}")
+                logger.info(f"Events count in loaded data: {len(temp_data.get('events', []))}")
+                # Optional: print first event if exists
+                if temp_data.get("events"):
+                    logger.info(f"First event sample: {temp_data['events'][0]}")
                 title = temp_data.get("autobiography", {}).get("title", journey_to_kml.replace(".json", ""))
                 title_display = " ".join(
                     word.capitalize() for word in title.replace("-", " ").replace("_", " ").split())
@@ -2387,30 +2469,31 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
                     base_name = journey_to_kml.replace(".json", "")
                     kml_filename = f"{base_name}_journey_{timestamp}.kml"
+                    logger.info(f"klm_filename {kml_filename}")
+                    # st.download_button(
+                    #     label="⬇️ Download KML Now",
+                    #     #data=f,
+                    #     data=kml_bytes,
+                    #     file_name=kml_filename,  # ← now uses selected journey name
+                    #     mime="application/vnd.google-earth.kml+xml",
+                    #     use_container_width=True,
+                    #     key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                    # )
+                    # Create KML file (using your existing function)
+                    export_to_kml(temp_data["events"], kml_filename)
 
-                    st.download_button(
-                        label="⬇️ Download KML Now",
-                        #data=f,
-                        data=kml_bytes,
-                        file_name=kml_filename,  # ← now uses selected journey name
-                        mime="application/vnd.google-earth.kml+xml",
-                        use_container_width=True,
-                        key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
-                    )
-                    # # Create KML file (using your existing function)
-                    # export_to_kml(temp_data["events"], kml_filename)
-                    #
-                    # # Read the file for download
-                    # with open(kml_filename, "rb") as f:
-                    #     st.download_button(
-                    #         label="⬇️ Download KML Now",
-                    #         #data=f,
-                    #         data=kml_bytes,
-                    #         file_name=kml_filename,  # ← now uses selected journey name
-                    #         mime="application/vnd.google-earth.kml+xml",
-                    #         use_container_width=True,
-                    #         key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
-                    #     )
+                    # Read the file for download
+                    with open(kml_filename, "rb") as f:
+                        file_contenet = f.read()
+                        st.download_button(
+                            label="⬇️ Download KML Now",
+                            data=file_contenet,
+                            # data=kml_bytes,
+                            file_name=kml_filename,  # ← now uses selected journey name
+                            mime="application/vnd.google-earth.kml+xml",
+                            use_container_width=True,
+                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                        )
 
                     st.markdown("""
                     **How to open:**
