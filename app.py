@@ -3,15 +3,13 @@
 # [server]
 # enableXsrfProtection = false
 # enableCORS = false
+from io import BytesIO
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
 import folium
-from folium.plugins import MarkerCluster
 from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
-#import os
-import sys
 from datetime import datetime, timedelta, date
 import time
 import base64
@@ -19,20 +17,19 @@ import logging
 from pathlib import Path
 import html
 import argparse
-# === NEW IMPORTS FOR GOOGLE CLOUD STORAGE ===
 import os
 from google.cloud import storage
 from google.oauth2 import service_account
-import simplekml
 import re
 import toml
 import io
 import zipfile
 import mimetypes
+import streamlit as st
+import streamlit.components.v1 as components  # ← Correct import for current Streamlit
 
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
-#ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
 
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
@@ -63,13 +60,6 @@ if "selected_json_file" not in st.session_state:
 if "reset_map" not in st.session_state:
     st.session_state.reset_map = True
 
-#if getattr(sys, 'frozen', False):
-#    BASE_DIR = Path(sys.executable).parent
-#else:
-#    BASE_DIR = Path(__file__).resolve().parent
-
-#EBASE_DIR = Path("/adata/JJ")
-# BASE_DIR = Path(__file__).resolve().parent
 BASE_DIR = Path(os.getcwd()).resolve()
 
 # === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
@@ -123,24 +113,6 @@ def init_gcs_bucket_from_env():
     client = storage.Client(credentials=creds, project=sa_info["project_id"])
     return client.bucket(bucket_name)
 
-
-# if IS_CLOUD:
-#     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
-#
-#     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
-#     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
-#
-#     # Create client with explicit credentials and project
-#     storage_client = storage.Client(
-#         credentials=credentials,
-#         project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
-#     )
-#     bucket = storage_client.bucket(BUCKET_NAME)
-#     # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
-# else:
-#     st.sidebar.info("🖥️ Running locally (using filesystem)")
-#     # Your local fallback code (UPLOADS_PHOTOS, etc.)
-
 if IS_CLOUD:
     st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
     bucket = init_gcs_bucket_from_env()
@@ -148,11 +120,6 @@ else:
     st.sidebar.info("🖥️ Running locally (filesystem)")
 
 
-# def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
-#     blob = bucket.blob(destination_blob_name)
-#     blob.upload_from_string(file_bytes, content_type=content_type)
-#     return f"gs://{BUCKET_NAME}/{destination_blob_name}"
-from io import BytesIO
 
 def upload_to_gcs(file_data, destination_blob_name, content_type="application/octet-stream"):
     """
@@ -230,11 +197,7 @@ if "current_journey_locked" not in st.session_state:
 if "add_new_memory" not in st.session_state:
     st.session_state.add_new_memory = False
 
-if "search_text" not in st.session_state:
-    st.session_state.search_text = ""
-
-import streamlit as st
-import streamlit.components.v1 as components  # ← Correct import for current Streamlit
+if "search_text" not in st.session_state: st.session_state.search_text = ""
 
 # ──────────────────────────────────────────────────────────────
 #          TEMP BYPASS – Google login is broken right now
@@ -472,10 +435,6 @@ def export_to_kml_bytes(events) -> bytes:
 
     return kml.kml().encode("utf-8")
 
-# st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
-#if "selected_json_file" not in st.session_state:
-#    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
 JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
 JSON_FILE = BASE_DIR / st.session_state.selected_json_file
 # st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
@@ -496,14 +455,6 @@ def get_local_json_files():
             f.name for f in BASE_DIR.iterdir()
             if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")
         ])
-
-# def get_local_json_files():
-#     """Scan the current directory for .json files (excluding hidden and system files)"""
-#     json_files = []
-#     for item in BASE_DIR.iterdir():
-#         if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
-#             json_files.append(item.name)
-#     return sorted(json_files)
 
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
@@ -669,14 +620,6 @@ if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
-# # List journeys
-# def get_local_json_files():
-#     #if os.getenv("K_SERVICE1"):
-#     if IS_CLOUD:
-#         blobs = list_journey_blobs()
-#         return [os.path.basename(b) for b in blobs]
-#     else:
-#         return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
 
 ensure_valid_json()
 
@@ -1014,50 +957,6 @@ def build_popup_html(event):
                 </div>
                 """
         popup += "</div>"
-    # # === PHOTOS ===
-    # if photos:
-    #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
-    #     for p in photos:
-    #         # Convert gs://journey-journal/... → public HTTPS URL
-    #         if p.startswith("gs://"):
-    #             public_url = p.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
-    #         else:
-    #             public_url = p  # local fallback (only works locally)
-    #
-    #         fn = os.path.basename(p)
-    #         popup += f"""
-    #         <div style="text-align:center;">
-    #             <img src="{public_url}"
-    #                  style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
-    #                  onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;"
-    #                  loading="lazy">
-    #             <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
-    #         </div>
-    #         """
-    #     popup += "</div>"
-    #
-    # # === VIDEOS ===
-    # if videos:
-    #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;margin-top:8px;'>"
-    #     for v in videos:
-    #         if v.startswith("gs://"):
-    #             public_url = v.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
-    #         else:
-    #             public_url = v
-    #
-    #         fn = os.path.basename(v)
-    #         popup += f"""
-    #         <div style="text-align:center;">
-    #             <video controls style="max-width:100%;border-radius:8px;" preload="metadata">
-    #                 <source src="{public_url}" type="video/mp4">
-    #                 Your browser does not support the video tag.
-    #             </video>
-    #             <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
-    #         </div>
-    #         """
-    #     popup += "</div>"
-
-    # === FALLBACK MESSAGES ===
     if not photos and not videos:
         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
     else:
@@ -1090,19 +989,6 @@ def create_map():
                    lower_search in e.get("description", "").lower()
             ]
         events = filtered_events
-
-    # # todo remove session variable search_text = st.session_state.get("search_text", "")
-    # search_text = value
-    #
-    # if search_text:
-    #     lower_search = search_text.lower()
-    #     filtered_events = [
-    #         e for e in events
-    #         if lower_search in e.get("title", "").lower() or
-    #            lower_search in e.get("description", "").lower()
-    #     ]
-    # else:
-    #     filtered_events = events
 
 
     if not events:
@@ -1141,9 +1027,6 @@ def create_map():
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
-            #tooltip=f"{idx}. {e['title']} ({e['date']})",
-            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
-            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
             tooltip=folium.Tooltip(tooltip_html, perment=False, sticky=True),
             icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
         ).add_to(cluster)
@@ -1432,25 +1315,7 @@ if st.user.is_logged_in:
     #          Your NORMAL application code starts here
     # ──────────────────────────────────────────────────────────────
 
-    #st.title(f"Welcome, {st.user.name or 'Traveler'}! 🌏")
-
-# ... paste ALL your existing journey map, sidebar, editing logic, etc. here ...
-
-# # Example: restrict editing to specific users (optional)
-#
-#     if st.user.email in ALLOWED_EDIT_EMAILS:
-#         st.success("You have **edit permissions**.")
-#         # show edit buttons, add memory form, etc.
-#     else:
-#         st.info("You are in **view-only mode**.")
-#         # hide editing UI or show read-only version
-
-#========================== Login Session ===========================
-#st.title("🌍 My Life Journey – Map with Colored Timeline")
-
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
-
-
 
 # ==================== CENTER ON MARKER CONTROL ====================
 if data["events"]:
@@ -1543,12 +1408,6 @@ else:
 center = st.session_state.map_center if st.session_state.map_center != [20, 0] else None
 zoom = st.session_state.map_zoom if st.session_state.map_zoom != 2 else None
 
-#st.session_state.map_center = [20, 0]
-#st.session_state.map_zoom = 12
-#st.write("DEBUG: af create_map Current map_center in session_state =", st.session_state.get("map_center"))
-#st.write("DEBUG: af create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
-#st.write("DEBUG: af create_map force_map_refresh counter =", st.session_state.force_map_refresh)
-
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
 main_map = create_map()
@@ -1636,28 +1495,18 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                 photo_paths = []
                 for up in photos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_PHOTOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # photo_paths.append(str(path))
                     file_bytes = up.getbuffer()
-
-                    #if os.getenv("K_SERVICE1"):
                     if IS_CLOUD:
                         photo_paths.append(upload_to_gcs(file_bytes, f"photos/{fname}", up.type))
                     else:
                         path = UPLOADS_PHOTOS / fname
                         path.write_bytes(file_bytes)
-                        # photo_paths.append(str(path))
                         photo_paths.append(to_relative_path(path))
 
                 video_paths = []
                 for up in videos or []:
                     fname = f"{int(time.time())}_{up.name}"
-                    # path = UPLOADS_VIDEOS / fname
-                    # path.write_bytes(up.getbuffer())
-                    # video_paths.append(str(path))
                     file_bytes = up.getbuffer()
-                    #if os.getenv("K_SERVICE1"):
                     if IS_CLOUD:
                         video_paths.append(upload_to_gcs(file_bytes, f"videos/{fname}", up.type))
                     else:
@@ -1665,34 +1514,6 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                         path.write_bytes(file_bytes)
                         #video_paths.append(str(path))
                         video_paths.append(to_relative_path(path))
-
-                # photo_paths = []
-                # for up in photos or []:
-                #     if up is not None:  # Safety check
-                #         fname = f"{int(time.time())}_{up.name}"
-                #         try:
-                #             file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
-                #             if not file_bytes:  # Extra safety
-                #                 st.warning(f"Empty file skipped: {up.name}")
-                #                 continue
-                #             gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-                #             photo_paths.append(gcs_url)
-                #         except Exception as e:
-                #             st.error(f"Failed to upload photo {up.name}: {e}")
-                #
-                # video_paths = []
-                # for up in videos or []:
-                #     if up is not None:
-                #         fname = f"{int(time.time())}_{up.name}"
-                #         try:
-                #             file_bytes = up.getvalue()
-                #             if not file_bytes:
-                #                 st.warning(f"Empty file skipped: {up.name}")
-                #                 continue
-                #             gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-                #             video_paths.append(gcs_url)
-                #         except Exception as e:
-                #             st.error(f"Failed to upload video {up.name}: {e}")
 
                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
                 new_event = {
@@ -1715,154 +1536,6 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
             st.session_state.add_new_memory = False
             st.success("Adding Memory cancelled!")
             st.rerun()  # Clears the form by removing last_clicked state
-        #if cancel_clicked:
-        #    st.rerun()
-#else:
-#    if map_data and map_data.get("last_clicked"):
-#        st.sidebar.info("🔒 This journey is locked — cannot add new memories")
-
-# # ==================== EDITING EXISTING EVENT ====================
-# if not st.session_state.current_journey_locked and st.session_state.editing_event_id:
-#     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
-#     if event:
-#         if map_data and map_data.get("last_clicked"):
-#             click = map_data["last_clicked"]
-#             lat, lon = click["lat"], click["lng"]
-#             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#             st.session_state.latitude = lat
-#             st.session_state.longitude = lon
-#
-#
-#         st.sidebar.header(f"✏️ Editing: {event['title']}")
-#
-#         cur_lat = event["location"]["latitude"]
-#         cur_lon = event["location"]["longitude"]
-#         if st.session_state.latitude == 1.11:
-#             st.session_state.latitude = cur_lat
-#         if st.session_state.longitude== 1.11:
-#             st.session_state.longitude = cur_lon
-#         st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#         #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-#         st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
-#
-#         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-#         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
-#
-#         new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
-#         new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
-#
-#         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
-#             st.sidebar.markdown(f"### Current {label}")
-#             paths = event["media"].get(mtype, []).copy()
-#             if paths:
-#                 cols = st.sidebar.columns(3 if mtype == "photos" else 2)
-#                 for i, p in enumerate(paths):
-#                     if os.path.exists(p):
-#                         with cols[i % len(cols)]:
-#                             if mtype == "photos":
-#                                 st.image(p, width=150)
-#                             else:
-#                                 st.video(p)
-#                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
-#                                 os.remove(p)
-#                                 event["media"][mtype].remove(p)
-#                                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-#                                 #                     encoding="utf-8")
-#                                 save_data_to_storage(st.session_state.data)
-#                                 st.rerun()
-#             else:
-#                 st.sidebar.info(f"No {label.lower()}")
-#
-#         with st.sidebar.form("edit_form"):
-#             if map_data and map_data.get("last_clicked"):
-#                 click = map_data["last_clicked"]
-#                 lat, lon = click["lat"], click["lng"]
-#                 #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#                 #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#                 #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#                 #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#                 st.session_state.latitude = lat
-#                 st.session_state.longitude = lon
-#                 pass
-#             new_title = st.text_input("Title", event["title"])
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      #min_value=datetime(1920, 1, 1).date(),
-#                                      min_value=MIN_DATE,
-#                                      max_value=MAX_DATE)
-#             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
-#             new_loc = st.text_input("Location Name", st.session_state.default_name)
-#             new_desc = st.text_area("Description", event.get("description", ""))
-#             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
-#                                           key=f"add_ph_{event['id']}")
-#             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
-#                                           key=f"add_vid_{event['id']}")
-#
-#             if st.form_submit_button("💾 Save Changes", type="primary"):
-#                 event["location"]["latitude"] = new_lat
-#                 event["location"]["longitude"] = new_lon
-#                 event["title"] = new_title
-#                 event["date"] = new_date.strftime("%Y-%m-%d")
-#                 event["location"]["name"] = new_loc
-#                 event["description"] = new_desc
-#
-#                 # --- Upload new photos (FIXED) ---
-#                 for up in add_photos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_PHOTOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 url = str(local_path)
-#                             event["media"].setdefault("photos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload photo {up.name}: {e}")
-#
-#                 # --- Upload new videos (FIXED) ---
-#                 for up in add_videos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_VIDEOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 url = str(local_path)
-#                             event["media"].setdefault("videos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload video {up.name}: {e}")
-#
-#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-#                 save_data_to_storage(st.session_state.data)
-#                 st.session_state.force_map_refresh += 1
-#                 st.session_state.editing_event_id = None
-#                 st.success("Changes saved!")
-#                 st.rerun()
-#
-#             if st.sidebar.button("Cancel Editing"):
-#                 st.session_state.editing_event_id = None
-#                 st.rerun()
-# else:
-#     if st.session_state.editing_event_id:
-#         st.warning("Cannot edit — journey is locked")
-#         st.session_state.editing_event_id = None
-#         st.rerun()
-
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
@@ -2048,117 +1721,6 @@ if not st.session_state.current_journey_locked:
                     st.error(f"Rename failed: {e}")
                     logger.error(f"Rename error: {e}")
 
-    # # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
-    # with st.sidebar.expander("✏️ Rename Journey", expanded=False):
-    #     st.write("Change the name of an existing journey. This renames the file and updates the title.")
-    #
-    #     available_journeys = get_local_json_files()
-    #
-    #     if not available_journeys:
-    #         st.info("No journeys available to rename.")
-    #     else:
-    #         # Select journey to rename
-    #         journey_to_rename = st.selectbox(
-    #             "Select journey to rename",
-    #             options=available_journeys,
-    #             index=available_journeys.index(st.session_state.selected_json_file)
-    #             if st.session_state.selected_json_file in available_journeys else 0,
-    #             help="Choose the journey you want to rename"
-    #         )
-    #
-    #         # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
-    #         blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
-    #         try:
-    #             current_data = load_data_from_file(blob_or_path)
-    #             current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
-    #             event_count = len(current_data.get("events", []))
-    #
-    #             # Format nice display name
-    #             current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
-    #             current_display = " ".join(word.capitalize() for word in current_display.split())
-    #
-    #             st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
-    #         except Exception as e:
-    #             st.error(f"Could not load journey data: {e}")
-    #             current_display = journey_to_rename.replace(".json", "")
-    #             current_title = current_display
-    #             current_data = None
-    #
-    #         # === NOW USE current_display SAFELY ===
-    #         new_journey_name = st.text_input(
-    #             "New Journey Name*",
-    #             value=current_title,  # Pre-fill with actual title, not filename
-    #             placeholder="e.g., Europe Adventure 2025",
-    #             help="This will become the new display title and filename"
-    #         )
-    #
-    #         if new_journey_name and new_journey_name.strip():
-    #             if new_journey_name.strip() == current_title:
-    #                 st.info("New name is the same as current — nothing to do.")
-    #             else:
-    #                 # Clean for safe filename
-    #                 clean_name = (
-    #                     new_journey_name.strip()
-    #                     .lower()
-    #                     .replace(" ", "-")
-    #                     .replace("_", "-")
-    #                     .replace("/", "")
-    #                     .replace("\\", "")
-    #                     .replace(".", "")
-    #                 )
-    #                 if not clean_name:
-    #                     st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
-    #                 else:
-    #                     new_filename = f"{clean_name}.json"
-    #                     new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
-    #
-    #                     # Check if new filename already exists
-    #                     if new_filename in available_journeys:
-    #                         st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
-    #                     else:
-    #                         col_rename, col_cancel = st.columns(2)
-    #                         with col_rename:
-    #                             if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
-    #                                 if current_data is None:
-    #                                     st.error("Cannot rename: failed to load current journey data.")
-    #                                 else:
-    #                                     try:
-    #                                         # Update title in data
-    #                                         current_data["autobiography"]["title"] = new_journey_name.strip()
-    #                                         current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-    #
-    #                                         json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
-    #
-    #                                         # Save to new location
-    #                                         if IS_CLOUD:
-    #                                             upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
-    #                                             # Delete old blob
-    #                                             bucket.blob(get_json_path(journey_to_rename)).delete()
-    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
-    #                                         else:
-    #                                             (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
-    #                                             (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
-    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
-    #
-    #                                         # If renaming the currently active journey, update session
-    #                                         if journey_to_rename == st.session_state.selected_json_file:
-    #                                             st.session_state.selected_json_file = new_filename
-    #                                             st.cache_data.clear()
-    #                                             if "data" in st.session_state:
-    #                                                 del st.session_state["data"]
-    #
-    #                                         st.rerun()
-    #
-    #                                     except Exception as e:
-    #                                         st.error(f"Rename failed: {e}")
-    #                                         logger.error(f"Rename error: {e}")
-    #                         st.session_state.selected_json_file = new_filename
-    #
-    #                     with col_cancel:
-    #                         st.button("❌ Cancel", type="secondary", use_container_width=True)
-    #         else:
-    #             st.warning("Please enter a new journey name.")
-
 # ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("📥 Download Journey", expanded=False):
     st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
@@ -2309,42 +1871,6 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
                 st.error(f"Error reading file: {e}")
 
 
-# # ==================== DOWNLOAD JOURNEY Media files ` ====================
-# with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
-#     st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
-#
-#     available_journeys = get_local_json_files()
-#     if not available_journeys:
-#         st.info("No journeys available.")
-#     else:
-#         journey_pkg = st.selectbox(
-#             "Choose a journey to package",
-#             options=available_journeys,
-#             format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
-#             key="pkg_download_select"
-#         )
-#
-#         if journey_pkg:
-#             try:
-#                 zip_bytes = zip_journey_package(journey_pkg)
-#
-#                 ts = datetime.now().strftime("%Y%m%d_%H%M")
-#                 base = journey_pkg.replace(".json", "")
-#                 zip_name = f"{base}_package_{ts}.zip"
-#
-#                 st.download_button(
-#                     "⬇️ Download Package ZIP",
-#                     data=zip_bytes,
-#                     file_name=zip_name,
-#                     mime="application/zip",
-#                     use_container_width=True,
-#                     key=f"download_pkg_{journey_pkg}_{ts}"
-#                 )
-#                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
-#             except Exception as e:
-#                 st.error(f"Failed to build package: {e}")
-
-
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
@@ -2462,45 +1988,6 @@ with st.sidebar.expander("📦 Download Package (JSON + Media)", expanded=False)
                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
             except Exception as e:
                 st.error(f"Failed to build package: {e}")
-
-
-# # ==================== Upload JSON's MEDIA FILES ) ====================
-# with st.sidebar.expander("📦 Upload Journey Package (Restore JSON + Media)", expanded=False):
-#     if st.session_state.current_journey_locked:
-#         st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
-#         st.caption("Switch to an unlocked journey to use this feature.")
-#     else:
-#         st.write("Upload a package ZIP to restore the journey JSON and **re-upload all media**.")
-#
-#         pkg_up = st.file_uploader(
-#             "Select a journey package ZIP",
-#             type=["zip"],
-#             key="pkg_restore_uploader"
-#         )
-#
-#         if pkg_up is not None:
-#             try:
-#                 zip_bytes = pkg_up.read()
-#                 restored_name, restored_data = restore_journey_package(zip_bytes)
-#
-#                 title = restored_data.get("autobiography", {}).get("title", restored_name.replace(".json", ""))
-#                 count = len(restored_data.get("events", []))
-#
-#                 st.success(f"✅ Restored: **{title}** ({count} memories) → `{restored_name}`")
-#
-#                 # switch to restored journey
-#                 st.session_state.selected_json_file = restored_name
-#                 st.session_state.current_journey_locked = is_journey_locked(restored_name)
-#
-#                 st.cache_data.clear()
-#                 if "data" in st.session_state:
-#                     del st.session_state["data"]
-#                 st.session_state.force_map_refresh += 1
-#                 st.rerun()
-#
-#             except Exception as e:
-#                 st.error(f"Restore failed: {e}")
-#
 
 
 with st.sidebar.expander("📦 Upload Package (JSON + Media)", expanded=False):
@@ -2665,7 +2152,6 @@ lock_emoji = "🔒" if st.session_state.current_journey_locked else "✏️"
 locked = st.session_state.current_journey_locked
 
 # ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
-#st.sidebar.markdown("### Journey Status")
 
 if st.user.is_logged_in:
 
@@ -2733,254 +2219,6 @@ else:
     #st.sidebar.markdown(f"️🗺️ Journey {st.session_state.selected_json_file} has {event_count} {place_text}")
     st.sidebar.caption("Sign in to edit this journey")
 
-# sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
-#
-# for idx, event in enumerate(sorted_events, start=1):
-#     # Unique expander key - very important
-#     expander_key = f"memory_expander_{event['id']}"
-#
-#     # Control whether this expander should be open
-#     is_editing_this = (st.session_state.get("editing_event_id") == event["id"])
-#
-#     with st.sidebar.expander(
-#             f"🔹 {idx}. {event['date']} — {event['title']}",
-#             expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
-#     ):
-#         st.caption(f"📍 {event['location']['name']}")
-#
-#         # Preview media (optional)
-#         cols = st.columns(3)
-#         for i, p in enumerate(event["media"].get("photos", [])[:3]):
-#             with cols[i % 3]:
-#                 st.image(p, use_column_width=True)
-#
-#         # Edit / Delete buttons only when not locked
-#         if not st.session_state.current_journey_locked and not is_editing_this:
-#             col1, col2 = st.columns([3, 1])
-#             with col1:
-#                 if st.button("✏️ Edit", key=f"edit_{event['id']}"):
-#                     st.session_state.editing_event_id = event["id"]
-#                     st.session_state[f"force_open_{event['id']}"] = True
-#                     st.rerun()
-#
-#             with col2:
-#                 if st.button("🗑️ Delete", key=f"delete_{event['id']}"):
-#                     st.session_state.confirm_delete_id = event["id"]
-#                     st.rerun()
-#
-#         # ── This is the critical part ──
-#         # The form MUST be inside this expander block
-#         if is_editing_this:
-#             st.subheader("Edit this memory")
-#
-#             # Your editing controls here
-#             col_lat, col_lon = st.columns(2)
-#             with col_lat:
-#                 new_lat = st.number_input("Latitude", value=event["location"]["latitude"],
-#                                           format="%.6f", step=0.000001, key=f"lat_{event['id']}")
-#             with col_lon:
-#                 new_lon = st.number_input("Longitude", value=event["location"]["longitude"],
-#                                           format="%.6f", step=0.000001, key=f"lon_{event['id']}")
-#
-#             new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      min_value=MIN_DATE, max_value=MAX_DATE, key=f"date_{event['id']}")
-#             new_loc_name = st.text_input("Location Name", event["location"]["name"],
-#                                          key=f"locname_{event['id']}")
-#             new_desc = st.text_area("Description", event.get("description", ""),
-#                                     key=f"desc_{event['id']}")
-#
-#             # Media uploaders...
-#             st.file_uploader("Add Photos...", accept_multiple_files=True,
-#                              type=["jpg", "jpeg", "png", "gif"], key=f"photos_{event['id']}")
-#             st.file_uploader("Add Videos...", accept_multiple_files=True,
-#                              type=["mp4", "mov"], key=f"videos_{event['id']}")
-#
-#             col_save, col_cancel = st.columns(2)
-#             with col_save:
-#                 if st.button("💾 Save Changes", type="primary", key=f"save_{event['id']}"):
-#                     # Update event data...
-#                     event["location"]["latitude"] = new_lat
-#                     event["location"]["longitude"] = new_lon
-#                     event["title"] = new_title
-#                     event["date"] = new_date.strftime("%Y-%m-%d")
-#                     event["location"]["name"] = new_loc_name
-#                     event["description"] = new_desc
-#
-#                     # Handle file uploads...
-#
-#                     save_data_to_storage(st.session_state.data)
-#                     st.session_state.editing_event_id = None
-#                     # Optional: keep expander open after save
-#                     # st.session_state[f"force_open_{event['id']}"] = True
-#                     st.success("Saved!")
-#                     st.rerun()
-#
-#             with col_cancel:
-#                 if st.button("✖ Cancel", key=f"cancel_{event['id']}"):
-#                     st.session_state.editing_event_id = None
-#                     st.rerun()
-#
-
-################# MANUAL EDITING
-
-
-# # ==================== EDITING EXISTING EVENT ====================
-# if st.session_state.editing_event_id:
-#     logger.info(f" pass EDITING  EXISTING EVENT")
-#     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
-#     if event:
-#         if map_data and map_data.get("last_clicked"):
-#             click = map_data["last_clicked"]
-#             lat, lon = click["lat"], click["lng"]
-#             st.session_state.latitude = lat
-#             st.session_state.longitude = lon
-#             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#
-#         st.sidebar.header(f"✏️ Editing: {event['title']}")
-#
-#         cur_lat = event["location"]["latitude"]
-#         cur_lon = event["location"]["longitude"]
-#
-#         if st.session_state.latitude == 1.11:
-#             st.session_state.latitude = cur_lat
-#         if st.session_state.longitude == 1.11:
-#             st.session_state.longitude = cur_lon
-#
-#         st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-#         #st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
-#
-#         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-#         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
-#
-#         new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
-#         new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
-#
-#         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
-#             st.sidebar.markdown(f"### Current {label}")
-#             paths = event["media"].get(mtype, []).copy()
-#             if paths:
-#                 cols = st.sidebar.columns(3 if mtype == "photos" else 2)
-#                 for i, p in enumerate(paths):
-#                     if os.path.exists(p):
-#                         with cols[i % len(cols)]:
-#                             if mtype == "photos":
-#                                 st.image(p, width=150)
-#                             else:
-#                                 st.video(p)
-#                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
-#                                 os.remove(p)
-#                                 event["media"][mtype].remove(p)
-#                                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-#                                 #                     encoding="utf-8")
-#                                 save_data_to_storage(st.session_state.data)
-#                                 st.rerun()
-#             else:
-#                 st.sidebar.info(f"No {label.lower()}")
-#
-#         with st.sidebar.form("edit_form"):
-#             if map_data and map_data.get("last_clicked"):
-#                 click = map_data["last_clicked"]
-#                 lat, lon = click["lat"], click["lng"]
-#                 #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#                 #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#                 #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#                 #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#                 st.session_state.latitude = lat
-#                 st.session_state.longitude = lon
-#                 pass
-#             new_title = st.text_input("Title", event["title"])
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      min_value=datetime(1920, 1, 1).date(),
-#                                      max_value=None)
-#             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
-#             new_loc = st.text_input("Location Name", st.session_state.default_name)
-#             new_desc = st.text_area("Description", event.get("description", ""))
-#             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
-#                                           key=f"add_ph_{event['id']}")
-#             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
-#                                           key=f"add_vid_{event['id']}")
-#
-#             if st.form_submit_button("💾 Save Changes", type="primary"):
-#                 event["location"]["latitude"] = new_lat
-#                 event["location"]["longitude"] = new_lon
-#                 event["title"] = new_title
-#                 event["date"] = new_date.strftime("%Y-%m-%d")
-#                 event["location"]["name"] = new_loc
-#                 event["description"] = new_desc
-#
-#                 # --- Upload new photos (FIXED) ---
-#                 for up in add_photos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_PHOTOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 # url = str(local_path)
-#                                 url = to_relative_path(local_path)
-#                             event["media"].setdefault("photos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload photo {up.name}: {e}")
-#
-#                 # --- Upload new videos (FIXED) ---
-#                 for up in add_videos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_VIDEOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 #url = str(local_path)
-#                                 url = to_relative_path(local_path)
-#                             event["media"].setdefault("videos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload video {up.name}: {e}")
-#
-#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-#                 save_data_to_storage(st.session_state.data)
-#                 st.session_state.force_map_refresh += 1
-#                 st.session_state.editing_event_id = None
-#                 st.success("Changes saved!")
-#                 st.rerun()
-#
-#             if st.sidebar.button("Cancel Editing"):
-#                 st.session_state.editing_event_id = None
-#                 st.rerun()
-#
-#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ######################## buggy EDITING ######################
 if "edit_lat" not in st.session_state:
@@ -3045,15 +2283,6 @@ for idx, event in enumerate(sorted_events, start=1):
             else:
                 st.caption("No videos attached.")
 
-            # for i, p in enumerate(event["media"].get("photos", [])[:3]):
-            #     with cols[i % 3]:
-            #         try:
-            #             st.image(p, width="stretch")
-            #         except Exception as e:
-            #             st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
-            #             # Optional: log for debugging
-            #             # logger.warning(f"Missing media: {p} → {str(e)}")
-            #         #st.image(p,width="stretch")
 
         # Edit / Delete buttons — always visible when not editing
         if not st.session_state.current_journey_locked and not is_editing_this:
@@ -3238,12 +2467,6 @@ if "confirm_delete_id" in st.session_state:
                 break
 
 
-# Optional: last modified
-#if JSON_FILE.exists():
-#    mtime = datetime.fromtimestamp(JSON_FILE.stat().st_mtime)
-#    st.sidebar.caption(f"Last saved: {mtime.strftime('%Y-%m-%d %H:%M')}")
-
-
 ## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
 # SAFETY CHECK: Ensure selected_json_file always exists in session state
 if "selected_json_file" not in st.session_state:
@@ -3252,9 +2475,6 @@ if "selected_json_file" not in st.session_state:
 # Optional: Support --file argument to pre-select a different journey on launch
 #if args.file and (BASE_DIR / args.file).exists():
 #    st.session_state.selected_json_file = args.file
-
-# Refresh the list of available JSON files
-# local_json_files = get_local_json_files()
 
 # ==================== MY JOURNEYS (ROBUST PREVIEW) ====================
 st.sidebar.subheader("📍 My Journeys")
@@ -3309,4 +2529,3 @@ else:
                     del st.session_state["data"]
                 st.session_state.force_map_refresh += 1
                 st.rerun()
-
