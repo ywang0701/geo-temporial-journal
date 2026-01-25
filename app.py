@@ -3071,7 +3071,16 @@ for idx, event in enumerate(sorted_events, start=1):
         if is_editing_this and not st.session_state.current_journey_locked:
             st.markdown("---")
             st.subheader("Edit this memory")
-
+            if map_data and map_data.get("last_clicked"):
+                click = map_data["last_clicked"]
+                lat, lon = click["lat"], click["lng"]
+                # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
+                st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
+                # st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
+                # st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+                # st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+                st.session_state.latitude = lat
+                st.session_state.longitude = lon
 
             with st.form(key=f"edit_form_{event['id']}", clear_on_submit=False):
                 col_lat, col_lon = st.columns(2)
@@ -3086,25 +3095,39 @@ for idx, event in enumerate(sorted_events, start=1):
                 else:
                     lon_value = float(st.session_state.edit_lon)
 
-                logger.info(f"pass Edit marker {lat_value}   {st.session_state.edit_lat}")
+                logger.info(f"pass Edit marker {lat_value} {st.session_state.edit_lat}")
                 logger.info(f"pass Edit marker {lon_value} {st.session_state.edit_lon}")
-
                 with col_lat:
-                    new_lat = st.number_input(
-                        "Latitude",
-                        #value=lat_value,
-                        value=float(event["location"]["latitude"]),
-                        format="%.6f", step=0.000001,
-                        key=f"lat_{event['id']}"
-                    )
+                    current_lat_key = f"lat_{event['id']}"
+                    if current_lat_key in st.session_state:
+                        if abs(st.session_state[current_lat_key] - lat_value) > 1e-6:
+                            st.session_state[current_lat_key] = lat_value
+                            # st.rerun()   # often helps — try with & without
+                    # new_lat = st.number_input(
+                    #     "Latitude",
+                    #     #value=lat_value,
+                    #     #value=float(event["location"]["latitude"]),
+                    #     value=lat_value,
+                    #     format="%.6f", step=0.000001,
+                    #     key=f"lat_{event['id']}"
+                    # )
+                    new_lat = st.number_input("Latitude", key=f"lat_{event['id']}", format="%.6f", step=0.000001)
+
                 with col_lon:
-                    new_lon = st.number_input(
-                        "Longitude",
-                        #value=lon_value,
-                        value=float(event["location"]["longitude"]),
-                        format="%.6f", step=0.000001,
-                        key=f"lon_{event['id']}"
-                    )
+                    current_lon_key = f"lon_{event['id']}"
+                    if current_lon_key in st.session_state:
+                        if abs(st.session_state[current_lon_key] - lon_value) > 1e-6:
+                            st.session_state[current_lon_key] = lon_value
+                            # st.rerun()   # often helps — try with & without
+                    # new_lon = st.number_input(
+                    #     "Longitude",
+                    #     #value=lon_value,
+                    #     value=lon_value,
+                    #     #value=float(event["location"]["longitude"]),
+                    #     format="%.6f", step=0.000001,
+                    #     key=f"lon_{event['id']}"
+                    # )
+                    new_lon = st.number_input("Longitude", key=f"lon_{event['id']}", format="%.6f", step=0.000001)
 
                 new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
                 new_date = st.date_input(
