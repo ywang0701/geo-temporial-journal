@@ -148,10 +148,35 @@ else:
     st.sidebar.info("🖥️ Running locally (filesystem)")
 
 
-def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
+# def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
+#     blob = bucket.blob(destination_blob_name)
+#     blob.upload_from_string(file_bytes, content_type=content_type)
+#     return f"gs://{BUCKET_NAME}/{destination_blob_name}"
+from io import BytesIO
+
+def upload_to_gcs(file_data, destination_blob_name, content_type="application/octet-stream"):
+    """
+    Accepts: bytes | bytearray | memoryview | BytesIO | streamlit UploadedFile
+    """
     blob = bucket.blob(destination_blob_name)
-    blob.upload_from_string(file_bytes, content_type=content_type)
-    return f"gs://{BUCKET_NAME}/{destination_blob_name}"
+
+    # --- normalize to bytes ---
+    if file_data is None:
+        raise TypeError("upload_to_gcs: file_data is None")
+
+    if isinstance(file_data, (bytes, bytearray, memoryview)):
+        data = bytes(file_data)
+    elif isinstance(file_data, BytesIO):
+        data = file_data.getvalue()
+    elif hasattr(file_data, "getvalue"):  # streamlit UploadedFile supports this
+        data = file_data.getvalue()
+    elif hasattr(file_data, "read"):      # any file-like object
+        data = file_data.read()
+    else:
+        raise TypeError(f"upload_to_gcs: unsupported type {type(file_data)}")
+
+    blob.upload_from_string(data, content_type=content_type)
+    return f"gs://{bucket.name}/{destination_blob_name}"
 
 def download_from_gcs(blob_name):
     blob = bucket.blob(blob_name)
@@ -716,22 +741,41 @@ if "map_zoom" not in st.session_state:
 if "force_map_refresh" not in st.session_state:
     st.session_state.force_map_refresh = 0
 
+def get_media_bytes(media_path: str):
+    """Fetch bytes from GCS (gs://...) or local path."""
+    if not media_path:
+        return None
 
-def get_media_bytes(media_path):
-    """Fetch bytes from GCS (gs://...) or local path"""
-    if media_path.startswith("gs://"):
+    if isinstance(media_path, str) and media_path.startswith("gs://"):
+        # gs://bucket/blob
         parts = media_path[5:].split("/", 1)
         bucket_name = parts[0]
         blob_path = parts[1] if len(parts) > 1 else ""
+
+        # IMPORTANT: reuse authenticated client
         client = bucket.client
-        return client.bucket(bucket_name).blob(blob_path).download_as_b()
-        #blob = storage.Client().bucket(bucket_name).blob(blob_path)
-        #return blob.download_as_bytes()
+        return client.bucket(bucket_name).blob(blob_path).download_as_bytes()
     else:
-        path = Path(media_path)
-        if not path.exists():
+        lp = resolve_local_path(media_path)
+        if not lp.exists():
             return None
-        return path.read_bytes()
+        return lp.read_bytes()
+
+# def get_media_bytes(media_path):
+#     """Fetch bytes from GCS (gs://...) or local path"""
+#     if media_path.startswith("gs://"):
+#         parts = media_path[5:].split("/", 1)
+#         bucket_name = parts[0]
+#         blob_path = parts[1] if len(parts) > 1 else ""
+#         client = bucket.client
+#         return client.bucket(bucket_name).blob(blob_path).download_as_bytes()
+#         #blob = storage.Client().bucket(bucket_name).blob(blob_path)
+#         #return blob.download_as_bytes()
+#     else:
+#         path = Path(media_path)
+#         if not path.exists():
+#             return None
+#         return path.read_bytes()
 
 def get_image_base64(p):
     try:
@@ -2963,12 +3007,53 @@ for idx, event in enumerate(sorted_events, start=1):
             for i, p in enumerate(event["media"].get("photos", [])[:3]):
                 with cols[i % 3]:
                     try:
-                        st.image(p, width="stretch")
-                    except Exception as e:
+                        if isinstance(p, str) and p.startswith("gs://"):
+                            b = media_bytes_anywhere(p)  # uses gcs_bytes_from_gs_uri()
+                            if b:
+                                st.image(b, width="stretch")
+                            else:
+                                st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+                        else:
+                            # local relative path
+                            lp = resolve_local_path(p)
+                            if lp.exists():
+                                st.image(lp.read_bytes(), width="stretch")
+                            else:
+                                st.caption(f"🖼️ Missing ({os.path.basename(p)})")
+                    except Exception:
                         st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
-                        # Optional: log for debugging
-                        # logger.warning(f"Missing media: {p} → {str(e)}")
-                    #st.image(p,width="stretch")
+            # ---- VIDEO PREVIEW (SIDEBAR) ----
+            videos = event.get("media", {}).get("videos", [])
+            if videos:
+                st.markdown("**🎬 Videos**")
+                for v in videos[:2]:  # limit for performance
+                    try:
+                        if isinstance(v, str) and v.startswith("gs://"):
+                            vb = media_bytes_anywhere(v)
+                            if vb:
+                                st.video(vb)
+                            else:
+                                st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
+                        else:
+                            lp = resolve_local_path(v)
+                            if lp.exists():
+                                st.video(lp.read_bytes())
+                            else:
+                                st.caption(f"🎬 Missing ({os.path.basename(v)})")
+                    except Exception:
+                        st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
+            else:
+                st.caption("No videos attached.")
+
+            # for i, p in enumerate(event["media"].get("photos", [])[:3]):
+            #     with cols[i % 3]:
+            #         try:
+            #             st.image(p, width="stretch")
+            #         except Exception as e:
+            #             st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+            #             # Optional: log for debugging
+            #             # logger.warning(f"Missing media: {p} → {str(e)}")
+            #         #st.image(p,width="stretch")
 
         # Edit / Delete buttons — always visible when not editing
         if not st.session_state.current_journey_locked and not is_editing_this:
