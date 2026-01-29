@@ -3,6 +3,7 @@
 # [server]
 # enableXsrfProtection = false
 # enableCORS = false
+# https://ywangperl-jj7.hf.space/
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -151,11 +152,6 @@ except Exception as e:
     st.sidebar.warning(f"Could not read config.toml: {e}")
 
 def init_gcs_bucket_from_env():
-    """
-    Hugging Face MVP:
-      - Secret: GCP_SA_JSON (full service account json)
-      - Variable: GCS_BUCKET_NAME
-    """
     sa_json = os.getenv("GCP_SA_JSON")
     bucket_name = os.getenv("GCS_BUCKET_NAME")
 
@@ -171,11 +167,6 @@ def init_gcs_bucket_from_env():
 
 
 if IS_CLOUD:
-    """
-     Hugging Face MVP:
-       - Secret: GCP_SA_JSON (full service account json)
-       - Variable: GCS_BUCKET_NAME
-     """
     sa_json = os.getenv("GCP_SA_JSON")
     bucket_name = os.getenv("GCS_BUCKET_NAME")
 
@@ -188,36 +179,10 @@ if IS_CLOUD:
     creds = service_account.Credentials.from_service_account_info(sa_info)
     storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
     bucket = storage_client.bucket(bucket_name)
-
-
-    # This is the streamlit community cloud code
-    # st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
-    #
-    # # Load credentials from secrets (must be under [gcs] or [connections.gcs])
-    # credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
-    #
-    # # Create client with explicit credentials and project
-    # storage_client = storage.Client(
-    #     credentials=credentials,
-    #     project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
-    # )
-    # bucket = storage_client.bucket(BUCKET_NAME)
-    # # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
-#else:
-#    st.sidebar.info("🖥️ Running locally (using filesystem)")
-    # Your local fallback code (UPLOADS_PHOTOS, etc.)
-
-#if IS_CLOUD:
     st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
     bucket = init_gcs_bucket_from_env()
 else:
     st.sidebar.info("🖥️ Running locally (filesystem)")
-
-
-# def upload_to_gcs(file_bytes, destination_blob_name, content_type='application/octet-stream'):
-#     blob = bucket.blob(destination_blob_name)
-#     blob.upload_from_string(file_bytes, content_type=content_type)
-#     return f"gs://{BUCKET_NAME}/{destination_blob_name}"
 
 
 def upload_to_gcs(file_data, destination_blob_name, content_type="application/octet-stream"):
@@ -249,9 +214,6 @@ def download_from_gcs(blob_name):
     return blob.download_as_bytes()
 
 
-# def list_journey_blobs():
-#     return [blob.name for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/") if blob.name.endswith(".json")]
-
 def list_journey_blobs():
     # returns full blob names like "journeys/xxx.json"
     return [
@@ -259,7 +221,6 @@ def list_journey_blobs():
         for blob in bucket.list_blobs(prefix=f"{JOURNEYS_FOLDER}/")
         if blob.name.endswith(".json")
     ]
-
 
 def get_json_path(json_name):
     return f"{JOURNEYS_FOLDER}/{json_name}"
@@ -271,13 +232,10 @@ def to_relative_path(path: Path) -> str:
 if IS_CLOUD:
     pass
 else:
-    # Local development fallback
     UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
     UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
     UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
-
-#DEFAULT_ACTIVE_JSON="life_events.json"
 
 if "edit_lat" not in st.session_state:
     st.session_state.edit_lat = None
@@ -333,83 +291,6 @@ if False:  # ← change to False when you fix real auth
 
 else:
     pass
-    # # ----------------------------
-    # # Login
-    # # ----------------------------
-    # if "token" not in st.session_state:
-    #     # extras_params are passed through to the provider
-    #     # access_type=offline + prompt=consent helps get a refresh_token from Google.
-    #     result = oauth2.authorize_button(
-    #         name="Sign in with Google",
-    #         redirect_uri=REDIRECT_URI,
-    #         scope=SCOPE,
-    #         key="google_login_btn",
-    #         extras_params={"access_type": "offline", "prompt": "consent"},
-    #         pkce="S256",  # optional but recommended
-    #         use_container_width=True,
-    #     )
-    #
-    #     if result and "token" in result:
-    #         st.session_state["token"] = result["token"]
-    #         st.rerun()
-    #     st.stop()
-#
-#     # ----------------------------
-#     # Logged in area
-#     # ----------------------------
-#     token = st.session_state["token"]
-#     st.success("Logged in!")
-#     st.subheader("Token payload (for debug)")
-#     st.json(token)
-#
-#     # If you need the email:
-#     # Google returns an id_token (JWT) in many cases; you can decode it to read claims.
-#     # NOTE: For production, you should VERIFY the token signature & audience.
-#     id_token = token.get("id_token")
-#     if id_token:
-#         try:
-#             import jwt  # PyJWT
-#
-#             claims = jwt.decode(id_token, options={"verify_signature": False})
-#             st.subheader("ID Token claims (decoded, NOT verified)")
-#             st.json(claims)
-#             st.write("Email:", claims.get("email"))
-#         except Exception as e:
-#             st.warning(f"Couldn't decode id_token: {e}")
-#     else:
-#         st.info("No id_token found in token response (depends on Google response/scopes).")
-#
-#     # Refresh token
-#     if st.button("Refresh token"):
-#         token = oauth2.refresh_token(token)
-#         st.session_state["token"] = token
-#         st.rerun()
-#
-#     # Logout / revoke
-#     if st.button("Logout (revoke token)"):
-#         try:
-#             oauth2.revoke_token(token)
-#         finally:
-#             st.session_state.pop("token", None)
-#             st.rerun()
-#
-#     # pre OAuth code
-#     # # # Original real authentication code (commented out for now)
-#     # # if not st.user.is_logged_in:
-#     # #     st.set_page_config(page_title="Please Sign In", layout="wide")
-#     # #     st.title("🌍 Journey Journal")
-#     # #     st.markdown("Sign in to continue")
-#     # #     if st.button("Sign in with Google", type="primary"):
-#     # #         st.login("google")
-#     # #     st.stop()
-#     # st.set_page_config(page_title="Please Sign In", layout="wide")
-#     # st.title("🌍 Journey Journal")
-#     # st.markdown("Sign in to continue")
-#     # if st.button("Sign in with Google", type="primary"):
-#     #     st.login("google")
-#     # st.stop()
-#     #
-# # pre OAuth code
 
 # ==================== DEVICE DETECTION ====================
 if "device_type" not in st.session_state:
@@ -444,14 +325,14 @@ if "device_type" not in st.session_state:
 initial_sidebar = "collapsed" if st.session_state.device_type == "mobile" else "expanded"
 
 # ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
-parser = argparse.ArgumentParser(description="My Life Journey App")
-parser.add_argument(
-    "--file",
-    type=str,
-    default=DEFAULT_ACTIVE_JSON,
-    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
-)
-args = parser.parse_args()
+#parser = argparse.ArgumentParser(description="My Life Journey App")
+#parser.add_argument(
+#    "--file",
+#    type=str,
+#    default=DEFAULT_ACTIVE_JSON,
+#    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
+#)
+#args = parser.parse_args()
 
 # ── Handle shared journey via URL query param ────────────────────────────────
 if "journey" in st.query_params:
@@ -568,50 +449,6 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     kml.save(output_filename)
     return output_filename
 
-# def export_to_kml_bytes(events) -> bytes:
-#     kml = simplekml.Kml(name="My Journey with Timeline", open=1)
-#
-#     sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
-#     path_coords = []
-#
-#     journey_line = kml.newlinestring(name="Journey Path")
-#     journey_line.style.linestyle.color = simplekml.Color.teal
-#     journey_line.style.linestyle.width = 5
-#     journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
-#
-#     for idx, event in enumerate(sorted_events, 1):
-#         try:
-#             lat = float(event["location"]["latitude"])
-#             lon = float(event["location"]["longitude"])
-#             coord = (lon, lat)
-#             path_coords.append(coord)
-#
-#             title = event.get("title", f"Memory #{idx}")
-#             date_str = event.get("date", None)
-#             desc = event.get("description", "No description")
-#
-#             pnt = kml.newpoint(
-#                 name=f"{idx}. {date_str or 'Unknown'} – {title}",
-#                 description=desc,
-#                 coords=[coord]
-#             )
-#             pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
-#             pnt.style.iconstyle.scale = 1.1
-#
-#             if date_str:
-#                 try:
-#                     dt = datetime.strptime(date_str, "%Y-%m-%d")
-#                     pnt.timestamp.when = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
-#                 except ValueError:
-#                     pass
-#         except Exception:
-#             continue
-#
-#     if len(path_coords) >= 2:
-#         journey_line.coords = path_coords
-#
-#     return kml.kml().encode("utf-8")
-
 def export_to_kml_bytes(events) -> bytes:
     logger.info("=== KML EXPORT START ===")
     logger.info(f"Input events count: {len(events)}")
@@ -715,14 +552,6 @@ def get_local_json_files():
             if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")
         ])
 
-# def get_local_json_files():
-#     """Scan the current directory for .json files (excluding hidden and system files)"""
-#     json_files = []
-#     for item in BASE_DIR.iterdir():
-#         if item.is_file() and item.suffix.lower() == ".json" and not item.name.startswith("."):
-#             json_files.append(item.name)
-#     return sorted(json_files)
-
 def save_data_to_storage(data):
     json_text = json.dumps(data, indent=4, ensure_ascii=False)
     if IS_CLOUD:
@@ -768,10 +597,6 @@ else:
     # Normal case: journeys exist
     pass
 
-#def is_journey_locked(json_filename):
-#    if not st.user.is_logged_in:
-#        logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
-#        return True
 def is_journey_locked(json_filename):
     if not st.session_state.auth.get("is_logged_in"):
         logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
@@ -891,15 +716,6 @@ if "data" not in st.session_state:
     #st.session_state.data = load_data_from_file(JSON_FILE)
     st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
 
-# # List journeys
-# def get_local_json_files():
-#     #if os.getenv("K_SERVICE1"):
-#     if IS_CLOUD:
-#         blobs = list_journey_blobs()
-#         return [os.path.basename(b) for b in blobs]
-#     else:
-#         return sorted([f.name for f in BASE_DIR.iterdir() if f.is_file() and f.suffix == ".json" and not f.name.startswith(".")])
-
 ensure_valid_json()
 
 data = st.session_state.data
@@ -982,22 +798,6 @@ def get_media_bytes(media_path: str):
         if not lp.exists():
             return None
         return lp.read_bytes()
-
-# def get_media_bytes(media_path):
-#     """Fetch bytes from GCS (gs://...) or local path"""
-#     if media_path.startswith("gs://"):
-#         parts = media_path[5:].split("/", 1)
-#         bucket_name = parts[0]
-#         blob_path = parts[1] if len(parts) > 1 else ""
-#         client = bucket.client
-#         return client.bucket(bucket_name).blob(blob_path).download_as_bytes()
-#         #blob = storage.Client().bucket(bucket_name).blob(blob_path)
-#         #return blob.download_as_bytes()
-#     else:
-#         path = Path(media_path)
-#         if not path.exists():
-#             return None
-#         return path.read_bytes()
 
 def get_image_base64(p):
     try:
@@ -1236,48 +1036,6 @@ def build_popup_html(event):
                 </div>
                 """
         popup += "</div>"
-    # # === PHOTOS ===
-    # if photos:
-    #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
-    #     for p in photos:
-    #         # Convert gs://journey-journal/... → public HTTPS URL
-    #         if p.startswith("gs://"):
-    #             public_url = p.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
-    #         else:
-    #             public_url = p  # local fallback (only works locally)
-    #
-    #         fn = os.path.basename(p)
-    #         popup += f"""
-    #         <div style="text-align:center;">
-    #             <img src="{public_url}"
-    #                  style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
-    #                  onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;"
-    #                  loading="lazy">
-    #             <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
-    #         </div>
-    #         """
-    #     popup += "</div>"
-    #
-    # # === VIDEOS ===
-    # if videos:
-    #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;margin-top:8px;'>"
-    #     for v in videos:
-    #         if v.startswith("gs://"):
-    #             public_url = v.replace("gs://journey-journal/", "https://storage.googleapis.com/journey-journal/")
-    #         else:
-    #             public_url = v
-    #
-    #         fn = os.path.basename(v)
-    #         popup += f"""
-    #         <div style="text-align:center;">
-    #             <video controls style="max-width:100%;border-radius:8px;" preload="metadata">
-    #                 <source src="{public_url}" type="video/mp4">
-    #                 Your browser does not support the video tag.
-    #             </video>
-    #             <br><small><a href="{public_url}" download="{fn}" target="_blank">📥 Download</a></small>
-    #         </div>
-    #         """
-    #     popup += "</div>"
 
     # === FALLBACK MESSAGES ===
     if not photos and not videos:
@@ -1591,99 +1349,6 @@ st.set_page_config(
 )
 
 
-
-### NEW LOGIN SESSION ###
-
-# # Title + Sign-in link at the very top
-# st.title("Journey Journal")
-#
-# if not st.session_state.auth.get("is_logged_in", False):
-#     # Visitor: show clickable link to jump to login
-#     st.markdown(
-#         '👤 [**Sign in with Google to edit**](#login-area)',
-#         unsafe_allow_html=True
-#     )
-# else:
-#     # Logged-in: show user info + logout
-#     user = st.session_state.auth["user_info"]
-#     name = user.get("name", "User")
-#     email = user.get("email", "—")
-#     picture = user.get("picture")
-#
-#     cols = st.columns([1, 4])
-#     with cols[0]:
-#         if picture:
-#             st.image(picture, width=48)
-#         else:
-#             st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
-#
-#     with cols[1]:
-#         st.markdown(f"**{name}**")
-#         st.caption(email)
-#
-#     if st.button("Sign out", type="secondary", use_container_width=True):
-#         st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
-#         st.rerun()
-
-# ── Rest of your sidebar (journeys list, search, export, etc.) ──
-
-
-# # ── Login button (non-blocking) ──────────────────────────────────────────
-# with st.sidebar:
-#     st.title("Journey Journal")
-#     st.markdown("**Visitor mode** (read-only)")
-#     if not st.session_state.auth["is_logged_in"]:
-#         st.markdown("**Visitor mode** (read-only)")
-#         result = oauth2.authorize_button(
-#             name="Sign in with Google",
-#             redirect_uri=REDIRECT_URI,
-#             scope=SCOPE,
-#             key="google_login_btn",
-#             extras_params={
-#                 "access_type": "offline",  # crucial for refresh token
-#                 "prompt": "consent"  # forces consent screen → refresh token
-#             },
-#             pkce="S256",  # recommended security
-#             use_container_width=True,
-#             )
-#         st.markdown('</div>', unsafe_allow_html=True)
-#         st.caption("**Visitor mode** (read-only) 2")
-#         if result and "token" in result:
-#             st.session_state.auth["token"] = result["token"]
-#             st.session_state.auth["user_info"] = result.get("user_info", {})
-#             st.session_state.auth["is_logged_in"] = True
-#             st.rerun()
-#         st.markdown("**Visitor mode** (read-only) 3")
-#     else:
-#         user = st.session_state.auth["user_info"]
-#         name = user.get("name", "User")
-#         email = user.get("email", "—")
-#         picture = user.get("picture")
-#
-#         cols = st.columns([1, 4])
-#         with cols[0]:
-#             if picture:
-#                 st.image(picture, width=48)
-#             else:
-#                 st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
-#
-#         with cols[1]:
-#             st.markdown(f"**{name}**")
-#             st.caption(email)
-#
-#         if st.button("Sign out", type="secondary", use_container_width=True):
-#             st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
-#             st.rerun()
-
-# ── Main content ─────────────────────────────────────────────────────────
-#st.title("🌍 Journey Journal")
-#
-# # Always visible (read-only for everyone)
-# st.write("Map, memories, timeline — visible to all visitors")
-
-# Your map code, journey list, memory display here...
-# ...
-
 # ── Edit controls — only shown/enabled when logged in ────────────────────
 if st.session_state.auth["is_logged_in"]:
     #st.markdown("---")
@@ -1700,145 +1365,18 @@ if st.session_state.auth["is_logged_in"]:
     #         st.session_state["adding_memory"] = True
     #         st.rerun()
 
-        # ... rest of edit/delete/lock UI ...
+    st.sidebar.title(f"🌍 Welcome {st.session_state.name}🌍")
 else:
-    pass
-    # st.info("Sign in via Link to add or edit memories.")
-        # login_result = oauth2.authorize_button(
-        #     label="Sign in with Google to edit",
-        #     redirect_uri=REDIRECT_URI,
-        #     scope=["openid", "email", "profile"],
-        #     type="primary",
-        #     use_container_width=True,
-        #     key="visitor_login_btn"
-        # )
-        #
-        # if login_result and login_result.get("token"):
-        #     st.session_state.auth.update({
-        #         "token": login_result["token"],
-        #         "user_info": login_result.get("user_info", {}),
-        #         "is_logged_in": True
-        #     })
-        #     st.rerun()
-
-    # else:
-    #     # Logged-in mode
-    #     user = st.session_state.auth["user_info"]
-    #     name = user.get("name", "User")
-    #     email = user.get("email", "?")
-    #     picture = user.get("picture")
-    #
-    #     col1, col2 = st.columns([1, 4])
-    #     with col1:
-    #         if picture:
-    #             st.image(picture, width=48)
-    #         else:
-    #             st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
-    #
-    #     with col2:
-    #         st.markdown(f"**{name}**")
-    #         st.caption(email)
-    #
-    #     if st.button("Sign out", type="secondary", use_container_width=True):
-    #         st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
-    #         st.rerun()
-    #
-    # # Common sidebar content (journeys list, search, export etc.)
-    # st.markdown("---")
-    # st.subheader("My Journeys")
-
-
-### NEW LOGIN SESSION ###
-#========================== Login Session ===========================
-
-# ──────────────────────────────────────────────────────────────
-#          Authentication Guard – runs before anything else
-# ──────────────────────────────────────────────────────────────
-
-# Optional: you can force re-login every time (good for testing)
-# But usually you want session persistence via cookie → comment out
-# if "force_reauth" not in st.session_state:
-#     st.session_state.force_reauth = False
-
-#if not st.user.is_logged_in:
-if not st.session_state.auth.get("is_logged_in"):
-    # st.sidebar.title("Hello Visitor")
-    # st.sidebar.markdown("Sign in to view or edit your personal journeys.")
-    # if st.sidebar.button("Sign in with Google", type="primary"):
-    #     st.login("google")
-    #
-    # ## Google debug
-    # st.write("--- DEBUG LOGIN STATUS ---")
-    # st.write("st.user.is_logged_in       =", st.user.is_logged_in)
-    # st.write("st.user (full object)      =", dict(st.user) if st.user else "None")
-    # st.write("st.experimental_user       =", st.experimental_user)
-    # st.write("Session state has user?    =", "user" in st.session_state)
-    # if st.user.is_logged_in:
-    #     st.success(f"Logged in as {st.user.name} ({st.user.email})")
-    # else:
-    #     st.info("Not logged in yet")
-    # st.set_page_config(page_title="Journey Journal – Sign in", layout="wide")
-    #
-    #st.title("🌍 Journey Journal")
-    st.title("🌍 Welcome Visitors 🌍")
-    st.sidebar.markdown(f"** Signed in to create/edit your journeies")
-    # st.info("Sign in via Link to add or edit your personal journeys.")
-
+    #st.title("🌍 Welcome Visitors 🌍")
+    st.sidebar.title("🌍 Welcome Visitors 🌍")
+    #st.sidebar.markdown(f"<a href = \"login-session\">Signed in to create/edit your journeies")
+    st.sidebar.markdown('👤 [**Sign in with Google to add/edit Journeies**](#login-section)', unsafe_allow_html=True)
     #if not st.session_state.auth.get("is_logged_in", False):
-    #    st.markdown('👤 [**Sign in with Google to edit**](#login-section)', unsafe_allow_html=True)
-
-# ──────────────────────────────────────────────────────────────
-#          User is now logged in → show app + user info
-# ──────────────────────────────────────────────────────────────
-#if st.user.is_logged_in:
-else:
-# Optional: show who is logged in (very useful)
-    st.title(f"🌍 Welcome {st.session_state.name}🌍")
-    #st.sidebar.title(f"Hello 🙍 {st.user.name}")
-    #st.sidebar.markdown(f"**👤 Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
-    #st.sidebar.caption(f"Logged in • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    #st.sidebar.markdown(f"** Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
-
-# if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
-    pass
-    # if st.sidebar.button("🙋️ Sign out", type="secondary", use_container_width=True):
-    #     st.logout()
-    #     # st.user.is_logged_in = False
-    #     st.rerun()
-    #
-    # # ── Optional: store user info in session state if you need it later ──
-    # if "user_info" not in st.session_state:
-    #     st.session_state.user_info = {
-    #         "email": st.user.email,
-    #         "name": st.user.name,
-    #         "id": st.user.sub,           # subject = unique user ID
-    #         "provider": st.user.iss,     # issuer
-    #         "last_login": datetime.now().isoformat()
-    #     }
-
-    # ──────────────────────────────────────────────────────────────
-    #          Your NORMAL application code starts here
-    # ──────────────────────────────────────────────────────────────
-
-    #st.title(f"Welcome, {st.user.name or 'Traveler'}! 🌏")
-
-# ... paste ALL your existing journey map, sidebar, editing logic, etc. here ...
-
-# # Example: restrict editing to specific users (optional)
-#
-#     if st.user.email in ALLOWED_EDIT_EMAILS:
-#         st.success("You have **edit permissions**.")
-#         # show edit buttons, add memory form, etc.
-#     else:
-#         st.info("You are in **view-only mode**.")
-#         # hide editing UI or show read-only version
+    #st.markdown('👤 [**Sign in with Google to edit**](#login-section)', unsafe_allow_html=True)
 
 #========================== Login Session ===========================
-#st.title("🌍 My Life Journey – Map with Colored Timeline")
 
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
-
-
 
 # ==================== CENTER ON MARKER CONTROL ====================
 if data["events"]:
@@ -1848,7 +1386,7 @@ if data["events"]:
     with col_title:
         st.title(full_title)
     with col_reset:
-        if st.button("Reset to Full View"):
+        if st.button("Full View"):
             st.session_state.map_center = [20, 0]
             st.session_state.map_zoom = 2
             st.session_state.force_map_refresh += 1
@@ -1992,7 +1530,11 @@ if map_data and map_data.get("center"):
 # Safety: only allow one mode at a time
 if st.session_state.editing_event_id and st.session_state.add_new_memory:
     st.session_state.add_new_memory = False  # editing takes priority
+# todo
+if st.session_state.auth.get("is_logged_in", False):
+    st.session_state.add_new_memory = True
 
+logger.info(f"add new marker ----------->  {st.session_state.editing_event_id}   {st.session_state.add_new_memory}   {st.session_state.add_new_memory}")
 #if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
 if not st.session_state.current_journey_locked and st.session_state.add_new_memory and map_data and map_data.get("last_clicked"):
     click = map_data["last_clicked"]
@@ -2054,33 +1596,6 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                         #video_paths.append(str(path))
                         video_paths.append(to_relative_path(path))
 
-                # photo_paths = []
-                # for up in photos or []:
-                #     if up is not None:  # Safety check
-                #         fname = f"{int(time.time())}_{up.name}"
-                #         try:
-                #             file_bytes = up.getvalue()  # ← Use .getvalue(), not .getbuffer()
-                #             if not file_bytes:  # Extra safety
-                #                 st.warning(f"Empty file skipped: {up.name}")
-                #                 continue
-                #             gcs_url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-                #             photo_paths.append(gcs_url)
-                #         except Exception as e:
-                #             st.error(f"Failed to upload photo {up.name}: {e}")
-                #
-                # video_paths = []
-                # for up in videos or []:
-                #     if up is not None:
-                #         fname = f"{int(time.time())}_{up.name}"
-                #         try:
-                #             file_bytes = up.getvalue()
-                #             if not file_bytes:
-                #                 st.warning(f"Empty file skipped: {up.name}")
-                #                 continue
-                #             gcs_url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-                #             video_paths.append(gcs_url)
-                #         except Exception as e:
-                #             st.error(f"Failed to upload video {up.name}: {e}")
 
                 new_id = max((e["id"] for e in st.session_state.data["events"]), default=0) + 1
                 new_event = {
@@ -2256,6 +1771,7 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
 #  (here: below the map, or move it back to sidebar if preferred)
 # ============================================================================
 
+st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 # Anchor target is already defined above: id="login-area"
 if not st.session_state.auth.get("is_logged_in", False):
     with st.container():
@@ -2280,15 +1796,14 @@ if not st.session_state.auth.get("is_logged_in", False):
             st.session_state.current_journey_locked = False
             st.rerun()
 else:
-    st.success(f"Logged in as {st.session_state.auth['user_info'].get('name', 'User')}")
+    # st.success(f"Logged in as {st.session_state.auth['user_info'].get('name', 'User')}")
     # Optional: extra edit controls here if you want
     # ----------------------------
     # Logged in area
     # ----------------------------
     token = st.session_state.auth["token"]
-    #st.success("Logged in!")
-    st.subheader("Token payload (for debug)")
-    st.json(token)
+    # st.subheader("Token payload (for debug)")
+    # st.json(token)
 
     # If you need the email:
     # Google returns an id_token (JWT) in many cases; you can decode it to read claims.
@@ -2299,10 +1814,10 @@ else:
             import jwt  # PyJWT
 
             claims = jwt.decode(id_token, options={"verify_signature": False})
-            st.subheader("ID Token claims (decoded, NOT verified)")
-            st.json(claims)
-            st.write("Email:", claims.get("email"))
-            st.write("Name :", claims.get("name"))
+            #st.subheader("ID Token claims (decoded, NOT verified)")
+            #st.json(claims)
+            #st.write("Email:", claims.get("email"))
+            #st.write("Name :", claims.get("name"))
             st.session_state.email = claims.get("email")
             st.session_state.name = claims.get("name")
 
@@ -2317,22 +1832,14 @@ else:
     #     st.session_state["token"] = token
     #     st.rerun()
 
-    # Logout / revoke
-    #if st.button("Logout (revoke token)"):
-        # try:
-        #     oauth2.revoke_token(token)
-        # finally:
-        #     st.session_state.pop("token", None)
-        #     st.rerun()
+    #cols = st.columns([1, 4])
+    #with cols[1]:
+    if st.button("Sign out", type="secondary", use_container_width=True):
+        st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
+        st.session_state.current_journey_locked = True
+        st.rerun()
 
-    cols = st.columns([1, 4])
-    with cols[1]:
-        if st.button("Sign out", type="secondary", use_container_width=True):
-            st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
-            st.session_state.current_journey_locked = True
-            st.rerun()
-
-st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
+#st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
 logger.info(f" locked {st.session_state.current_journey_locked}")
@@ -2518,117 +2025,6 @@ if not st.session_state.current_journey_locked:
                     st.error(f"Rename failed: {e}")
                     logger.error(f"Rename error: {e}")
 
-    # # ==================== RENAME JOURNEY (FIXED ORDER + SAFE) ====================
-    # with st.sidebar.expander("✏️ Rename Journey", expanded=False):
-    #     st.write("Change the name of an existing journey. This renames the file and updates the title.")
-    #
-    #     available_journeys = get_local_json_files()
-    #
-    #     if not available_journeys:
-    #         st.info("No journeys available to rename.")
-    #     else:
-    #         # Select journey to rename
-    #         journey_to_rename = st.selectbox(
-    #             "Select journey to rename",
-    #             options=available_journeys,
-    #             index=available_journeys.index(st.session_state.selected_json_file)
-    #             if st.session_state.selected_json_file in available_journeys else 0,
-    #             help="Choose the journey you want to rename"
-    #         )
-    #
-    #         # === LOAD AND PREVIEW THE SELECTED JOURNEY FIRST ===
-    #         blob_or_path = get_json_path(journey_to_rename) if IS_CLOUD else str(BASE_DIR / journey_to_rename)
-    #         try:
-    #             current_data = load_data_from_file(blob_or_path)
-    #             current_title = current_data.get("autobiography", {}).get("title", journey_to_rename.replace(".json", ""))
-    #             event_count = len(current_data.get("events", []))
-    #
-    #             # Format nice display name
-    #             current_display = journey_to_rename.replace(".json", "").replace("_", " ").replace("-", " ")
-    #             current_display = " ".join(word.capitalize() for word in current_display.split())
-    #
-    #             st.info(f"**Current:** {current_title} • {event_count} memory{'s' if event_count != 1 else ''} • File: `{journey_to_rename}`")
-    #         except Exception as e:
-    #             st.error(f"Could not load journey data: {e}")
-    #             current_display = journey_to_rename.replace(".json", "")
-    #             current_title = current_display
-    #             current_data = None
-    #
-    #         # === NOW USE current_display SAFELY ===
-    #         new_journey_name = st.text_input(
-    #             "New Journey Name*",
-    #             value=current_title,  # Pre-fill with actual title, not filename
-    #             placeholder="e.g., Europe Adventure 2025",
-    #             help="This will become the new display title and filename"
-    #         )
-    #
-    #         if new_journey_name and new_journey_name.strip():
-    #             if new_journey_name.strip() == current_title:
-    #                 st.info("New name is the same as current — nothing to do.")
-    #             else:
-    #                 # Clean for safe filename
-    #                 clean_name = (
-    #                     new_journey_name.strip()
-    #                     .lower()
-    #                     .replace(" ", "-")
-    #                     .replace("_", "-")
-    #                     .replace("/", "")
-    #                     .replace("\\", "")
-    #                     .replace(".", "")
-    #                 )
-    #                 if not clean_name:
-    #                     st.error("Invalid name – please use letters, numbers, spaces, or hyphens.")
-    #                 else:
-    #                     new_filename = f"{clean_name}.json"
-    #                     new_blob_name = get_json_path(new_filename) if IS_CLOUD else str(BASE_DIR / new_filename)
-    #
-    #                     # Check if new filename already exists
-    #                     if new_filename in available_journeys:
-    #                         st.warning(f"A journey named **{new_filename}** already exists. Choose a different name.")
-    #                     else:
-    #                         col_rename, col_cancel = st.columns(2)
-    #                         with col_rename:
-    #                             if st.button("✏️ Rename Journey", type="primary", use_container_width=True):
-    #                                 if current_data is None:
-    #                                     st.error("Cannot rename: failed to load current journey data.")
-    #                                 else:
-    #                                     try:
-    #                                         # Update title in data
-    #                                         current_data["autobiography"]["title"] = new_journey_name.strip()
-    #                                         current_data["autobiography"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
-    #
-    #                                         json_text = json.dumps(current_data, indent=4, ensure_ascii=False)
-    #
-    #                                         # Save to new location
-    #                                         if IS_CLOUD:
-    #                                             upload_to_gcs(json_text.encode("utf-8"), get_json_path(new_filename), "application/json")
-    #                                             # Delete old blob
-    #                                             bucket.blob(get_json_path(journey_to_rename)).delete()
-    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** in cloud!")
-    #                                         else:
-    #                                             (BASE_DIR / new_filename).write_text(json_text, encoding="utf-8")
-    #                                             (BASE_DIR / journey_to_rename).unlink(missing_ok=True)
-    #                                             st.success(f"✅ Journey renamed to **{new_journey_name}** locally!")
-    #
-    #                                         # If renaming the currently active journey, update session
-    #                                         if journey_to_rename == st.session_state.selected_json_file:
-    #                                             st.session_state.selected_json_file = new_filename
-    #                                             st.cache_data.clear()
-    #                                             if "data" in st.session_state:
-    #                                                 del st.session_state["data"]
-    #
-    #                                         st.rerun()
-    #
-    #                                     except Exception as e:
-    #                                         st.error(f"Rename failed: {e}")
-    #                                         logger.error(f"Rename error: {e}")
-    #                         st.session_state.selected_json_file = new_filename
-    #
-    #                     with col_cancel:
-    #                         st.button("❌ Cancel", type="secondary", use_container_width=True)
-    #         else:
-    #             st.warning("Please enter a new journey name.")
-
 # ==================== DOWNLOAD JOURNEY BACKUP (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("📥 Download Journey", expanded=False):
     st.write("Select any journey and download its complete JSON backup for safekeeping or sharing.")
@@ -2779,42 +2175,6 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
                 st.error(f"Error reading file: {e}")
 
 
-# # ==================== DOWNLOAD JOURNEY Media files ` ====================
-# with st.sidebar.expander("📦 Download Journey Package (JSON + Media)", expanded=False):
-#     st.write("Download a single ZIP containing the selected journey JSON **plus all referenced photos/videos**.")
-#
-#     available_journeys = get_local_json_files()
-#     if not available_journeys:
-#         st.info("No journeys available.")
-#     else:
-#         journey_pkg = st.selectbox(
-#             "Choose a journey to package",
-#             options=available_journeys,
-#             format_func=lambda x: x.replace(".json", "").replace("_", " ").replace("-", " ").title(),
-#             key="pkg_download_select"
-#         )
-#
-#         if journey_pkg:
-#             try:
-#                 zip_bytes = zip_journey_package(journey_pkg)
-#
-#                 ts = datetime.now().strftime("%Y%m%d_%H%M")
-#                 base = journey_pkg.replace(".json", "")
-#                 zip_name = f"{base}_package_{ts}.zip"
-#
-#                 st.download_button(
-#                     "⬇️ Download Package ZIP",
-#                     data=zip_bytes,
-#                     file_name=zip_name,
-#                     mime="application/zip",
-#                     use_container_width=True,
-#                     key=f"download_pkg_{journey_pkg}_{ts}"
-#                 )
-#                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
-#             except Exception as e:
-#                 st.error(f"Failed to build package: {e}")
-
-
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
@@ -2937,45 +2297,6 @@ with st.sidebar.expander("📦 Download Package (JSON + Media)", expanded=False)
                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
             except Exception as e:
                 st.error(f"Failed to build package: {e}")
-
-
-# # ==================== Upload JSON's MEDIA FILES ) ====================
-# with st.sidebar.expander("📦 Upload Journey Package (Restore JSON + Media)", expanded=False):
-#     if st.session_state.current_journey_locked:
-#         st.info("🔒 Restore is disabled — the **current** journey is locked (view-only).")
-#         st.caption("Switch to an unlocked journey to use this feature.")
-#     else:
-#         st.write("Upload a package ZIP to restore the journey JSON and **re-upload all media**.")
-#
-#         pkg_up = st.file_uploader(
-#             "Select a journey package ZIP",
-#             type=["zip"],
-#             key="pkg_restore_uploader"
-#         )
-#
-#         if pkg_up is not None:
-#             try:
-#                 zip_bytes = pkg_up.read()
-#                 restored_name, restored_data = restore_journey_package(zip_bytes)
-#
-#                 title = restored_data.get("autobiography", {}).get("title", restored_name.replace(".json", ""))
-#                 count = len(restored_data.get("events", []))
-#
-#                 st.success(f"✅ Restored: **{title}** ({count} memories) → `{restored_name}`")
-#
-#                 # switch to restored journey
-#                 st.session_state.selected_json_file = restored_name
-#                 st.session_state.current_journey_locked = is_journey_locked(restored_name)
-#
-#                 st.cache_data.clear()
-#                 if "data" in st.session_state:
-#                     del st.session_state["data"]
-#                 st.session_state.force_map_refresh += 1
-#                 st.rerun()
-#
-#             except Exception as e:
-#                 st.error(f"Restore failed: {e}")
-#
 
 
 with st.sidebar.expander("📦 Upload Package (JSON + Media)", expanded=False):
@@ -3206,255 +2527,7 @@ else:
     # Not logged in → show minimal / read-only info
     st.sidebar.subheader(f"🗺️ Journey: {st.session_state.selected_json_file} {timeline_info}")
     #st.sidebar.markdown(f"️🗺️ Journey {st.session_state.selected_json_file} has {event_count} {place_text}")
-    st.sidebar.caption("Sign in to edit this journey")
-
-# sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
-#
-# for idx, event in enumerate(sorted_events, start=1):
-#     # Unique expander key - very important
-#     expander_key = f"memory_expander_{event['id']}"
-#
-#     # Control whether this expander should be open
-#     is_editing_this = (st.session_state.get("editing_event_id") == event["id"])
-#
-#     with st.sidebar.expander(
-#             f"🔹 {idx}. {event['date']} — {event['title']}",
-#             expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
-#     ):
-#         st.caption(f"📍 {event['location']['name']}")
-#
-#         # Preview media (optional)
-#         cols = st.columns(3)
-#         for i, p in enumerate(event["media"].get("photos", [])[:3]):
-#             with cols[i % 3]:
-#                 st.image(p, use_column_width=True)
-#
-#         # Edit / Delete buttons only when not locked
-#         if not st.session_state.current_journey_locked and not is_editing_this:
-#             col1, col2 = st.columns([3, 1])
-#             with col1:
-#                 if st.button("✏️ Edit", key=f"edit_{event['id']}"):
-#                     st.session_state.editing_event_id = event["id"]
-#                     st.session_state[f"force_open_{event['id']}"] = True
-#                     st.rerun()
-#
-#             with col2:
-#                 if st.button("🗑️ Delete", key=f"delete_{event['id']}"):
-#                     st.session_state.confirm_delete_id = event["id"]
-#                     st.rerun()
-#
-#         # ── This is the critical part ──
-#         # The form MUST be inside this expander block
-#         if is_editing_this:
-#             st.subheader("Edit this memory")
-#
-#             # Your editing controls here
-#             col_lat, col_lon = st.columns(2)
-#             with col_lat:
-#                 new_lat = st.number_input("Latitude", value=event["location"]["latitude"],
-#                                           format="%.6f", step=0.000001, key=f"lat_{event['id']}")
-#             with col_lon:
-#                 new_lon = st.number_input("Longitude", value=event["location"]["longitude"],
-#                                           format="%.6f", step=0.000001, key=f"lon_{event['id']}")
-#
-#             new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      min_value=MIN_DATE, max_value=MAX_DATE, key=f"date_{event['id']}")
-#             new_loc_name = st.text_input("Location Name", event["location"]["name"],
-#                                          key=f"locname_{event['id']}")
-#             new_desc = st.text_area("Description", event.get("description", ""),
-#                                     key=f"desc_{event['id']}")
-#
-#             # Media uploaders...
-#             st.file_uploader("Add Photos...", accept_multiple_files=True,
-#                              type=["jpg", "jpeg", "png", "gif"], key=f"photos_{event['id']}")
-#             st.file_uploader("Add Videos...", accept_multiple_files=True,
-#                              type=["mp4", "mov"], key=f"videos_{event['id']}")
-#
-#             col_save, col_cancel = st.columns(2)
-#             with col_save:
-#                 if st.button("💾 Save Changes", type="primary", key=f"save_{event['id']}"):
-#                     # Update event data...
-#                     event["location"]["latitude"] = new_lat
-#                     event["location"]["longitude"] = new_lon
-#                     event["title"] = new_title
-#                     event["date"] = new_date.strftime("%Y-%m-%d")
-#                     event["location"]["name"] = new_loc_name
-#                     event["description"] = new_desc
-#
-#                     # Handle file uploads...
-#
-#                     save_data_to_storage(st.session_state.data)
-#                     st.session_state.editing_event_id = None
-#                     # Optional: keep expander open after save
-#                     # st.session_state[f"force_open_{event['id']}"] = True
-#                     st.success("Saved!")
-#                     st.rerun()
-#
-#             with col_cancel:
-#                 if st.button("✖ Cancel", key=f"cancel_{event['id']}"):
-#                     st.session_state.editing_event_id = None
-#                     st.rerun()
-#
-
-################# MANUAL EDITING
-
-
-# # ==================== EDITING EXISTING EVENT ====================
-# if st.session_state.editing_event_id:
-#     logger.info(f" pass EDITING  EXISTING EVENT")
-#     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
-#     if event:
-#         if map_data and map_data.get("last_clicked"):
-#             click = map_data["last_clicked"]
-#             lat, lon = click["lat"], click["lng"]
-#             st.session_state.latitude = lat
-#             st.session_state.longitude = lon
-#             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#
-#         st.sidebar.header(f"✏️ Editing: {event['title']}")
-#
-#         cur_lat = event["location"]["latitude"]
-#         cur_lon = event["location"]["longitude"]
-#
-#         if st.session_state.latitude == 1.11:
-#             st.session_state.latitude = cur_lat
-#         if st.session_state.longitude == 1.11:
-#             st.session_state.longitude = cur_lon
-#
-#         st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-#         #st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
-#
-#         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-#         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
-#
-#         new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
-#         new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
-#
-#         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
-#             st.sidebar.markdown(f"### Current {label}")
-#             paths = event["media"].get(mtype, []).copy()
-#             if paths:
-#                 cols = st.sidebar.columns(3 if mtype == "photos" else 2)
-#                 for i, p in enumerate(paths):
-#                     if os.path.exists(p):
-#                         with cols[i % len(cols)]:
-#                             if mtype == "photos":
-#                                 st.image(p, width=150)
-#                             else:
-#                                 st.video(p)
-#                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
-#                                 os.remove(p)
-#                                 event["media"][mtype].remove(p)
-#                                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-#                                 #                     encoding="utf-8")
-#                                 save_data_to_storage(st.session_state.data)
-#                                 st.rerun()
-#             else:
-#                 st.sidebar.info(f"No {label.lower()}")
-#
-#         with st.sidebar.form("edit_form"):
-#             if map_data and map_data.get("last_clicked"):
-#                 click = map_data["last_clicked"]
-#                 lat, lon = click["lat"], click["lng"]
-#                 #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#                 #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#                 #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#                 #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#                 st.session_state.latitude = lat
-#                 st.session_state.longitude = lon
-#                 pass
-#             new_title = st.text_input("Title", event["title"])
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      min_value=datetime(1920, 1, 1).date(),
-#                                      max_value=None)
-#             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
-#             new_loc = st.text_input("Location Name", st.session_state.default_name)
-#             new_desc = st.text_area("Description", event.get("description", ""))
-#             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
-#                                           key=f"add_ph_{event['id']}")
-#             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
-#                                           key=f"add_vid_{event['id']}")
-#
-#             if st.form_submit_button("💾 Save Changes", type="primary"):
-#                 event["location"]["latitude"] = new_lat
-#                 event["location"]["longitude"] = new_lon
-#                 event["title"] = new_title
-#                 event["date"] = new_date.strftime("%Y-%m-%d")
-#                 event["location"]["name"] = new_loc
-#                 event["description"] = new_desc
-#
-#                 # --- Upload new photos (FIXED) ---
-#                 for up in add_photos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_PHOTOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 # url = str(local_path)
-#                                 url = to_relative_path(local_path)
-#                             event["media"].setdefault("photos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload photo {up.name}: {e}")
-#
-#                 # --- Upload new videos (FIXED) ---
-#                 for up in add_videos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_VIDEOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 #url = str(local_path)
-#                                 url = to_relative_path(local_path)
-#                             event["media"].setdefault("videos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload video {up.name}: {e}")
-#
-#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-#                 save_data_to_storage(st.session_state.data)
-#                 st.session_state.force_map_refresh += 1
-#                 st.session_state.editing_event_id = None
-#                 st.success("Changes saved!")
-#                 st.rerun()
-#
-#             if st.sidebar.button("Cancel Editing"):
-#                 st.session_state.editing_event_id = None
-#                 st.rerun()
-#
-#
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    #st.sidebar.caption("Sign in to edit this journey")
 
 
 ######################## buggy EDITING ######################
