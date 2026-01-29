@@ -10,7 +10,6 @@ import folium
 from folium.plugins import MarkerCluster
 from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
 import json
-#import os
 import sys
 from datetime import datetime, timedelta, date
 import time
@@ -29,7 +28,10 @@ import toml
 import io
 import zipfile
 import mimetypes
-
+import streamlit as st
+import streamlit.components.v1 as components  # ← Correct import for current Streamlit
+from streamlit_oauth import OAuth2Component
+from io import BytesIO
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -83,6 +85,51 @@ MAX_DATE = date(2026,12,30)
 
 st.session_state.latitude = 1.11
 st.session_state.longitude = 1.11
+
+# ----------------------------
+# Config (use env vars or st.secrets)
+# ----------------------------
+CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", os.getenv("GOOGLE_CLIENT_ID", ""))
+CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", os.getenv("GOOGLE_CLIENT_SECRET", ""))
+
+AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+REFRESH_URL = "https://oauth2.googleapis.com/token"
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+
+# This MUST match what you registered in Google Console:
+# http://localhost:8501/component/streamlit_oauth.authorize_button
+REDIRECT_URI = st.secrets.get(
+    "GOOGLE_REDIRECT_URI",
+    os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/component/streamlit_oauth.authorize_button"),
+)
+
+SCOPE = "openid email profile"
+
+# st.title("Google OAuth (streamlit-oauth v0.1.14)")
+#
+# ----------------------------
+# Create OAuth component
+# ----------------------------
+oauth2 = OAuth2Component(
+    CLIENT_ID,
+    CLIENT_SECRET,
+    AUTHORIZE_URL,
+    TOKEN_URL,
+    REFRESH_URL,
+    REVOKE_URL,
+)
+
+# ── Auth state ──────────────────────────────────────────────────────────────
+
+if "auth" not in st.session_state:
+    st.session_state.auth = {
+        "token": None,
+        "user_info": None,
+        "is_logged_in": False
+    }
+
+
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
 # IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
 #IS_CLOUD = False # HF is local  CLOUD is GCP
@@ -90,7 +137,6 @@ st.session_state.longitude = 1.11
 # ---- ENV DETECTION ----
 IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
 IS_CLOUD = IS_HF                     # treat HF as cloud backend
-
 
 
 try:
@@ -124,24 +170,44 @@ def init_gcs_bucket_from_env():
     return client.bucket(bucket_name)
 
 
-# if IS_CLOUD:
-#     st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
-#
-#     # Load credentials from secrets (must be under [gcs] or [connections.gcs])
-#     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
-#
-#     # Create client with explicit credentials and project
-#     storage_client = storage.Client(
-#         credentials=credentials,
-#         project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
-#     )
-#     bucket = storage_client.bucket(BUCKET_NAME)
-#     # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
-# else:
-#     st.sidebar.info("🖥️ Running locally (using filesystem)")
-#     # Your local fallback code (UPLOADS_PHOTOS, etc.)
-
 if IS_CLOUD:
+    """
+     Hugging Face MVP:
+       - Secret: GCP_SA_JSON (full service account json)
+       - Variable: GCS_BUCKET_NAME
+     """
+    sa_json = os.getenv("GCP_SA_JSON")
+    bucket_name = os.getenv("GCS_BUCKET_NAME")
+
+    if not sa_json:
+        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
+    if not bucket_name:
+        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+
+    sa_info = json.loads(sa_json)
+    creds = service_account.Credentials.from_service_account_info(sa_info)
+    storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
+    bucket = storage_client.bucket(bucket_name)
+
+
+    # This is the streamlit community cloud code
+    # st.sidebar.success("✅ Running on Streamlit Cloud (GCS enabled)")
+    #
+    # # Load credentials from secrets (must be under [gcs] or [connections.gcs])
+    # credentials = service_account.Credentials.from_service_account_info(st.secrets["gcs"])
+    #
+    # # Create client with explicit credentials and project
+    # storage_client = storage.Client(
+    #     credentials=credentials,
+    #     project=st.secrets["gcs"]["project_id"]  # or ["connections.gcs"]
+    # )
+    # bucket = storage_client.bucket(BUCKET_NAME)
+    # # Your existing upload_to_gcs, download_from_gcs, etc. functions stay the same
+#else:
+#    st.sidebar.info("🖥️ Running locally (using filesystem)")
+    # Your local fallback code (UPLOADS_PHOTOS, etc.)
+
+#if IS_CLOUD:
     st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
     bucket = init_gcs_bucket_from_env()
 else:
@@ -152,7 +218,7 @@ else:
 #     blob = bucket.blob(destination_blob_name)
 #     blob.upload_from_string(file_bytes, content_type=content_type)
 #     return f"gs://{BUCKET_NAME}/{destination_blob_name}"
-from io import BytesIO
+
 
 def upload_to_gcs(file_data, destination_blob_name, content_type="application/octet-stream"):
     """
@@ -230,18 +296,22 @@ if "current_journey_locked" not in st.session_state:
 if "add_new_memory" not in st.session_state:
     st.session_state.add_new_memory = False
 
-if "search_text" not in st.session_state:
-    st.session_state.search_text = ""
+if "name" not in st.session_state:
+    st.session_state.name = "Logged in User"
 
-import streamlit as st
-import streamlit.components.v1 as components  # ← Correct import for current Streamlit
+class init_user:
+    is_logged_in = False
+    name = "init_user"
+    email = "init_user_email"
+    sub = "init_user_sub"
 
+st.user = init_user()
 # ──────────────────────────────────────────────────────────────
 #          TEMP BYPASS – Google login is broken right now
 # ──────────────────────────────────────────────────────────────
 
 # Force login for everyone (temporary dev workaround)
-if True:  # ← change to False when you fix real auth
+if False:  # ← change to False when you fix real auth
     if "bypass_auth" not in st.session_state:
         st.session_state.bypass_auth = True
         st.session_state.user_info = {
@@ -262,14 +332,84 @@ if True:  # ← change to False when you fix real auth
     #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
 
 else:
-    # Original real authentication code (commented out for now)
-    if not st.user.is_logged_in:
-        st.set_page_config(page_title="Please Sign In", layout="wide")
-        st.title("🌍 Journey Journal")
-        st.markdown("Sign in to continue")
-        if st.button("Sign in with Google", type="primary"):
-            st.login("google")
-        st.stop()
+    pass
+    # # ----------------------------
+    # # Login
+    # # ----------------------------
+    # if "token" not in st.session_state:
+    #     # extras_params are passed through to the provider
+    #     # access_type=offline + prompt=consent helps get a refresh_token from Google.
+    #     result = oauth2.authorize_button(
+    #         name="Sign in with Google",
+    #         redirect_uri=REDIRECT_URI,
+    #         scope=SCOPE,
+    #         key="google_login_btn",
+    #         extras_params={"access_type": "offline", "prompt": "consent"},
+    #         pkce="S256",  # optional but recommended
+    #         use_container_width=True,
+    #     )
+    #
+    #     if result and "token" in result:
+    #         st.session_state["token"] = result["token"]
+    #         st.rerun()
+    #     st.stop()
+#
+#     # ----------------------------
+#     # Logged in area
+#     # ----------------------------
+#     token = st.session_state["token"]
+#     st.success("Logged in!")
+#     st.subheader("Token payload (for debug)")
+#     st.json(token)
+#
+#     # If you need the email:
+#     # Google returns an id_token (JWT) in many cases; you can decode it to read claims.
+#     # NOTE: For production, you should VERIFY the token signature & audience.
+#     id_token = token.get("id_token")
+#     if id_token:
+#         try:
+#             import jwt  # PyJWT
+#
+#             claims = jwt.decode(id_token, options={"verify_signature": False})
+#             st.subheader("ID Token claims (decoded, NOT verified)")
+#             st.json(claims)
+#             st.write("Email:", claims.get("email"))
+#         except Exception as e:
+#             st.warning(f"Couldn't decode id_token: {e}")
+#     else:
+#         st.info("No id_token found in token response (depends on Google response/scopes).")
+#
+#     # Refresh token
+#     if st.button("Refresh token"):
+#         token = oauth2.refresh_token(token)
+#         st.session_state["token"] = token
+#         st.rerun()
+#
+#     # Logout / revoke
+#     if st.button("Logout (revoke token)"):
+#         try:
+#             oauth2.revoke_token(token)
+#         finally:
+#             st.session_state.pop("token", None)
+#             st.rerun()
+#
+#     # pre OAuth code
+#     # # # Original real authentication code (commented out for now)
+#     # # if not st.user.is_logged_in:
+#     # #     st.set_page_config(page_title="Please Sign In", layout="wide")
+#     # #     st.title("🌍 Journey Journal")
+#     # #     st.markdown("Sign in to continue")
+#     # #     if st.button("Sign in with Google", type="primary"):
+#     # #         st.login("google")
+#     # #     st.stop()
+#     # st.set_page_config(page_title="Please Sign In", layout="wide")
+#     # st.title("🌍 Journey Journal")
+#     # st.markdown("Sign in to continue")
+#     # if st.button("Sign in with Google", type="primary"):
+#     #     st.login("google")
+#     # st.stop()
+#     #
+# # pre OAuth code
 
 # ==================== DEVICE DETECTION ====================
 if "device_type" not in st.session_state:
@@ -628,8 +768,12 @@ else:
     # Normal case: journeys exist
     pass
 
+#def is_journey_locked(json_filename):
+#    if not st.user.is_logged_in:
+#        logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
+#        return True
 def is_journey_locked(json_filename):
-    if not st.user.is_logged_in:
+    if not st.session_state.auth.get("is_logged_in"):
         logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
         return True
 
@@ -1446,6 +1590,165 @@ st.set_page_config(
     initial_sidebar_state=initial_sidebar   # ← Use the variable here
 )
 
+
+
+### NEW LOGIN SESSION ###
+
+# # Title + Sign-in link at the very top
+# st.title("Journey Journal")
+#
+# if not st.session_state.auth.get("is_logged_in", False):
+#     # Visitor: show clickable link to jump to login
+#     st.markdown(
+#         '👤 [**Sign in with Google to edit**](#login-area)',
+#         unsafe_allow_html=True
+#     )
+# else:
+#     # Logged-in: show user info + logout
+#     user = st.session_state.auth["user_info"]
+#     name = user.get("name", "User")
+#     email = user.get("email", "—")
+#     picture = user.get("picture")
+#
+#     cols = st.columns([1, 4])
+#     with cols[0]:
+#         if picture:
+#             st.image(picture, width=48)
+#         else:
+#             st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
+#
+#     with cols[1]:
+#         st.markdown(f"**{name}**")
+#         st.caption(email)
+#
+#     if st.button("Sign out", type="secondary", use_container_width=True):
+#         st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
+#         st.rerun()
+
+# ── Rest of your sidebar (journeys list, search, export, etc.) ──
+
+
+# # ── Login button (non-blocking) ──────────────────────────────────────────
+# with st.sidebar:
+#     st.title("Journey Journal")
+#     st.markdown("**Visitor mode** (read-only)")
+#     if not st.session_state.auth["is_logged_in"]:
+#         st.markdown("**Visitor mode** (read-only)")
+#         result = oauth2.authorize_button(
+#             name="Sign in with Google",
+#             redirect_uri=REDIRECT_URI,
+#             scope=SCOPE,
+#             key="google_login_btn",
+#             extras_params={
+#                 "access_type": "offline",  # crucial for refresh token
+#                 "prompt": "consent"  # forces consent screen → refresh token
+#             },
+#             pkce="S256",  # recommended security
+#             use_container_width=True,
+#             )
+#         st.markdown('</div>', unsafe_allow_html=True)
+#         st.caption("**Visitor mode** (read-only) 2")
+#         if result and "token" in result:
+#             st.session_state.auth["token"] = result["token"]
+#             st.session_state.auth["user_info"] = result.get("user_info", {})
+#             st.session_state.auth["is_logged_in"] = True
+#             st.rerun()
+#         st.markdown("**Visitor mode** (read-only) 3")
+#     else:
+#         user = st.session_state.auth["user_info"]
+#         name = user.get("name", "User")
+#         email = user.get("email", "—")
+#         picture = user.get("picture")
+#
+#         cols = st.columns([1, 4])
+#         with cols[0]:
+#             if picture:
+#                 st.image(picture, width=48)
+#             else:
+#                 st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
+#
+#         with cols[1]:
+#             st.markdown(f"**{name}**")
+#             st.caption(email)
+#
+#         if st.button("Sign out", type="secondary", use_container_width=True):
+#             st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
+#             st.rerun()
+
+# ── Main content ─────────────────────────────────────────────────────────
+#st.title("🌍 Journey Journal")
+#
+# # Always visible (read-only for everyone)
+# st.write("Map, memories, timeline — visible to all visitors")
+
+# Your map code, journey list, memory display here...
+# ...
+
+# ── Edit controls — only shown/enabled when logged in ────────────────────
+if st.session_state.auth["is_logged_in"]:
+    #st.markdown("---")
+    #st.subheader("Edit Controls")
+
+    # Optional: restrict to specific emails
+    allowed = ["your.email@gmail.com", "family@gmail.com"]
+    #if st.session_state.auth["user_info"].get("email") not in allowed:
+    blocked = ["your.email@gmail.com", "family@gmail.com"]
+    if st.session_state.auth["user_info"].get("email") in blocked:
+            st.warning("Account is blocked.  No edit permission for this account.")
+    # else:
+    #     if st.button("➕ Add new memory", type="primary"):
+    #         st.session_state["adding_memory"] = True
+    #         st.rerun()
+
+        # ... rest of edit/delete/lock UI ...
+else:
+    pass
+    # st.info("Sign in via Link to add or edit memories.")
+        # login_result = oauth2.authorize_button(
+        #     label="Sign in with Google to edit",
+        #     redirect_uri=REDIRECT_URI,
+        #     scope=["openid", "email", "profile"],
+        #     type="primary",
+        #     use_container_width=True,
+        #     key="visitor_login_btn"
+        # )
+        #
+        # if login_result and login_result.get("token"):
+        #     st.session_state.auth.update({
+        #         "token": login_result["token"],
+        #         "user_info": login_result.get("user_info", {}),
+        #         "is_logged_in": True
+        #     })
+        #     st.rerun()
+
+    # else:
+    #     # Logged-in mode
+    #     user = st.session_state.auth["user_info"]
+    #     name = user.get("name", "User")
+    #     email = user.get("email", "?")
+    #     picture = user.get("picture")
+    #
+    #     col1, col2 = st.columns([1, 4])
+    #     with col1:
+    #         if picture:
+    #             st.image(picture, width=48)
+    #         else:
+    #             st.image("https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&s=80", width=48)
+    #
+    #     with col2:
+    #         st.markdown(f"**{name}**")
+    #         st.caption(email)
+    #
+    #     if st.button("Sign out", type="secondary", use_container_width=True):
+    #         st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
+    #         st.rerun()
+    #
+    # # Common sidebar content (journeys list, search, export etc.)
+    # st.markdown("---")
+    # st.subheader("My Journeys")
+
+
+### NEW LOGIN SESSION ###
 #========================== Login Session ===========================
 
 # ──────────────────────────────────────────────────────────────
@@ -1457,54 +1760,61 @@ st.set_page_config(
 # if "force_reauth" not in st.session_state:
 #     st.session_state.force_reauth = False
 
-if not st.user.is_logged_in:
-    st.sidebar.title("Hello Visitor")
-    st.sidebar.markdown("Sign in to view or edit your personal journeys.")
-    if st.sidebar.button("Sign in with Google", type="primary"):
-        st.login("google")
-
+#if not st.user.is_logged_in:
+if not st.session_state.auth.get("is_logged_in"):
+    # st.sidebar.title("Hello Visitor")
+    # st.sidebar.markdown("Sign in to view or edit your personal journeys.")
+    # if st.sidebar.button("Sign in with Google", type="primary"):
+    #     st.login("google")
+    #
     # ## Google debug
     # st.write("--- DEBUG LOGIN STATUS ---")
     # st.write("st.user.is_logged_in       =", st.user.is_logged_in)
     # st.write("st.user (full object)      =", dict(st.user) if st.user else "None")
     # st.write("st.experimental_user       =", st.experimental_user)
     # st.write("Session state has user?    =", "user" in st.session_state)
-    if st.user.is_logged_in:
-        st.success(f"Logged in as {st.user.name} ({st.user.email})")
-    else:
-        st.info("Not logged in yet")
-    st.set_page_config(page_title="Journey Journal – Sign in", layout="wide")
-
+    # if st.user.is_logged_in:
+    #     st.success(f"Logged in as {st.user.name} ({st.user.email})")
+    # else:
+    #     st.info("Not logged in yet")
+    # st.set_page_config(page_title="Journey Journal – Sign in", layout="wide")
+    #
     #st.title("🌍 Journey Journal")
     st.title("🌍 Welcome Visitors 🌍")
-    #st.markdown("Sign in to view or edit your personal journeys.")
+    st.sidebar.markdown(f"** Signed in to create/edit your journeies")
+    # st.info("Sign in via Link to add or edit your personal journeys.")
+
+    #if not st.session_state.auth.get("is_logged_in", False):
+    #    st.markdown('👤 [**Sign in with Google to edit**](#login-section)', unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────
 #          User is now logged in → show app + user info
 # ──────────────────────────────────────────────────────────────
-if st.user.is_logged_in:
+#if st.user.is_logged_in:
+else:
 # Optional: show who is logged in (very useful)
-    st.sidebar.title(f"Hello 🙍 {st.user.name}")
+    st.title(f"🌍 Welcome {st.session_state.name}🌍")
+    #st.sidebar.title(f"Hello 🙍 {st.user.name}")
     #st.sidebar.markdown(f"**👤 Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
     #st.sidebar.caption(f"Logged in • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    st.sidebar.markdown(f"** Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
+    #st.sidebar.markdown(f"** Signed in as**  {st.user.email or st.user.name or 'Authenticated user'}")
 
 # if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
-
-    if st.sidebar.button("🙋️ Sign out", type="secondary", use_container_width=True):
-        st.logout()
-        # st.user.is_logged_in = False
-        st.rerun()
-
-    # ── Optional: store user info in session state if you need it later ──
-    if "user_info" not in st.session_state:
-        st.session_state.user_info = {
-            "email": st.user.email,
-            "name": st.user.name,
-            "id": st.user.sub,           # subject = unique user ID
-            "provider": st.user.iss,     # issuer
-            "last_login": datetime.now().isoformat()
-        }
+    pass
+    # if st.sidebar.button("🙋️ Sign out", type="secondary", use_container_width=True):
+    #     st.logout()
+    #     # st.user.is_logged_in = False
+    #     st.rerun()
+    #
+    # # ── Optional: store user info in session state if you need it later ──
+    # if "user_info" not in st.session_state:
+    #     st.session_state.user_info = {
+    #         "email": st.user.email,
+    #         "name": st.user.name,
+    #         "id": st.user.sub,           # subject = unique user ID
+    #         "provider": st.user.iss,     # issuer
+    #         "last_login": datetime.now().isoformat()
+    #     }
 
     # ──────────────────────────────────────────────────────────────
     #          Your NORMAL application code starts here
@@ -1637,7 +1947,7 @@ map_data = st_folium(
     center=st.session_state.map_center,
     zoom=st.session_state.map_zoom,
     width=None,
-    height=1200,
+    height= 1200,
     use_container_width=True,
     returned_objects=["last_clicked"]
     #returned_objects = ["last_clicked", "center", "zoom"]
@@ -1941,9 +2251,91 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
 #         st.session_state.editing_event_id = None
 #         st.rerun()
 
+# ============================================================================
+#  Login / Logout area — placed where you want the jump target
+#  (here: below the map, or move it back to sidebar if preferred)
+# ============================================================================
 
+# Anchor target is already defined above: id="login-area"
+if not st.session_state.auth.get("is_logged_in", False):
+    with st.container():
+
+        result = oauth2.authorize_button(
+            name="Sign in with Google to Create and Edit your journeies.",
+            redirect_uri=REDIRECT_URI,
+            scope=SCOPE,
+            key="google_login_btn",
+            extras_params={
+                "access_type": "offline",
+                "prompt": "consent"
+            },
+            pkce="S256",
+            use_container_width=True,
+        )
+
+        if result and result.get("token"):
+            st.session_state.auth["token"] = result["token"]
+            st.session_state.auth["user_info"] = result.get("user_info", {})
+            st.session_state.auth["is_logged_in"] = True
+            st.session_state.current_journey_locked = False
+            st.rerun()
+else:
+    st.success(f"Logged in as {st.session_state.auth['user_info'].get('name', 'User')}")
+    # Optional: extra edit controls here if you want
+    # ----------------------------
+    # Logged in area
+    # ----------------------------
+    token = st.session_state.auth["token"]
+    #st.success("Logged in!")
+    st.subheader("Token payload (for debug)")
+    st.json(token)
+
+    # If you need the email:
+    # Google returns an id_token (JWT) in many cases; you can decode it to read claims.
+    # NOTE: For production, you should VERIFY the token signature & audience.
+    id_token = token.get("id_token")
+    if id_token:
+        try:
+            import jwt  # PyJWT
+
+            claims = jwt.decode(id_token, options={"verify_signature": False})
+            st.subheader("ID Token claims (decoded, NOT verified)")
+            st.json(claims)
+            st.write("Email:", claims.get("email"))
+            st.write("Name :", claims.get("name"))
+            st.session_state.email = claims.get("email")
+            st.session_state.name = claims.get("name")
+
+        except Exception as e:
+            st.warning(f"Couldn't decode id_token: {e}")
+    else:
+        st.info("No id_token found in token response (depends on Google response/scopes).")
+
+    # Refresh token
+    # if st.button("Refresh token"):
+    #     token = oauth2.refresh_token(token)
+    #     st.session_state["token"] = token
+    #     st.rerun()
+
+    # Logout / revoke
+    #if st.button("Logout (revoke token)"):
+        # try:
+        #     oauth2.revoke_token(token)
+        # finally:
+        #     st.session_state.pop("token", None)
+        #     st.rerun()
+
+    cols = st.columns([1, 4])
+    with cols[1]:
+        if st.button("Sign out", type="secondary", use_container_width=True):
+            st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
+            st.session_state.current_journey_locked = True
+            st.rerun()
+
+st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
+logger.info(f" locked {st.session_state.current_journey_locked}")
 if not st.session_state.current_journey_locked:
     # ==================== CREATE NEW JOURNEY ====================
     #st.sidebar.markdown("---")
