@@ -3,7 +3,7 @@
 # [server]
 # enableXsrfProtection = false
 # enableCORS = false
-# https://ywangperl-jj7.hf.space/
+# https://ywangperl-jj7.hf.space/?journey=7events.json (lower case)
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -121,14 +121,45 @@ oauth2 = OAuth2Component(
     REVOKE_URL,
 )
 
-# ── Auth state ──────────────────────────────────────────────────────────────
+# ── Auth state initialization (MUST BE FIRST) ───────────────────────
 
 if "auth" not in st.session_state:
     st.session_state.auth = {
         "token": None,
+        "refresh_token": None,
         "user_info": None,
-        "is_logged_in": False
+        "is_logged_in": False,
     }
+
+# ── Silent re-auth using refresh token ───────────────────────────────
+
+if not st.session_state.auth.get("is_logged_in", False):
+    refresh_token = st.session_state.auth.get("refresh_token")
+
+    if refresh_token:
+        try:
+            new_token = oauth2.refresh_token({
+                "refresh_token": refresh_token
+            })
+
+            st.session_state.auth["token"] = new_token
+            st.session_state.auth["is_logged_in"] = True
+            st.session_state.current_journey_locked = False
+
+            # Optional: update stored refresh token if Google rotates it
+            if new_token.get("refresh_token"):
+                st.session_state.auth["refresh_token"] = new_token["refresh_token"]
+
+        except Exception as e:
+            # Refresh failed → user must log in again
+            st.session_state.auth = {
+                "token": None,
+                "user_info": None,
+                "is_logged_in": False
+            }
+
+
+
 
 
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
@@ -150,6 +181,9 @@ try:
 
 except Exception as e:
     st.sidebar.warning(f"Could not read config.toml: {e}")
+
+def is_logged_in():
+    return st.session_state.auth.get("is_logged_in", False)
 
 def init_gcs_bucket_from_env():
     sa_json = os.getenv("GCP_SA_JSON")
@@ -325,20 +359,19 @@ if "device_type" not in st.session_state:
 initial_sidebar = "collapsed" if st.session_state.device_type == "mobile" else "expanded"
 
 # ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
-#parser = argparse.ArgumentParser(description="My Life Journey App")
-#parser.add_argument(
+# parser = argparse.ArgumentParser(description="My Life Journey App")
+# parser.add_argument(
 #    "--file",
 #    type=str,
 #    default=DEFAULT_ACTIVE_JSON,
 #    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
-#)
-#args = parser.parse_args()
+# )
+# args = parser.parse_args()
 
 # ── Handle shared journey via URL query param ────────────────────────────────
 if "journey" in st.query_params:
     requested = st.query_params["journey"][0] if isinstance(st.query_params["journey"], list) else st.query_params[
         "journey"]
-
     # Basic safety: must end with .json and no dangerous characters
     if requested.endswith(".json") and all(c.isalnum() or c in "-_" for c in requested.replace(".json", "")):
         # Optional: normalize (you can skip if filenames are already clean)
@@ -362,14 +395,29 @@ if "journey" in st.query_params:
         st.warning("Invalid journey link.")
 
 
+# def is_journey_locked(json_filename):
+#     if IS_CLOUD:
+#         lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
+#         return lock_blob.exists()
+#     else:
+#         lock_path = BASE_DIR / f"{json_filename}_lock"
+#         return lock_path.exists()
+
 def is_journey_locked(json_filename):
+    if not st.session_state.auth.get("is_logged_in"):
+        logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
+        return True
+
     if IS_CLOUD:
-        lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
-        return lock_blob.exists()
+        lock_blob_name = f"{JOURNEYS_FOLDER}/{json_filename}_lock"
+        lock_exists = bucket.blob(lock_blob_name).exists()
+        logger.debug(f"Cloud lock check for '{json_filename}': {lock_exists}")
+        return lock_exists
     else:
         lock_path = BASE_DIR / f"{json_filename}_lock"
-        return lock_path.exists()
-
+        lock_exists = lock_path.exists()
+        logger.debug(f"Local lock check for '{json_filename}': {lock_exists}")
+        return lock_exists
 
 import simplekml
 from datetime import datetime
@@ -597,21 +645,7 @@ else:
     # Normal case: journeys exist
     pass
 
-def is_journey_locked(json_filename):
-    if not st.session_state.auth.get("is_logged_in"):
-        logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
-        return True
 
-    if IS_CLOUD:
-        lock_blob_name = f"{JOURNEYS_FOLDER}/{json_filename}_lock"
-        lock_exists = bucket.blob(lock_blob_name).exists()
-        logger.debug(f"Cloud lock check for '{json_filename}': {lock_exists}")
-        return lock_exists
-    else:
-        lock_path = BASE_DIR / f"{json_filename}_lock"
-        lock_exists = lock_path.exists()
-        logger.debug(f"Local lock check for '{json_filename}': {lock_exists}")
-        return lock_exists
 
 
 # Right after st.session_state.selected_json_file = json_name
@@ -1342,15 +1376,16 @@ css += """
 </style>
 """
 st.markdown(css, unsafe_allow_html=True)
-st.set_page_config(
-    page_title=f"{display_name} - Map {timeline_info}",
-    layout="wide",
-    initial_sidebar_state=initial_sidebar   # ← Use the variable here
-)
-
+# st.set_page_config(
+#     page_title=f"{display_name} - Map {timeline_info}",
+#     layout="wide",
+#     initial_sidebar_state=initial_sidebar   # ← Use the variable here
+# )
+#
 
 # ── Edit controls — only shown/enabled when logged in ────────────────────
-if st.session_state.auth["is_logged_in"]:
+#if st.session_state.auth["is_logged_in"]:
+if is_logged_in:
     #st.markdown("---")
     #st.subheader("Edit Controls")
 
@@ -1358,8 +1393,8 @@ if st.session_state.auth["is_logged_in"]:
     allowed = ["your.email@gmail.com", "family@gmail.com"]
     #if st.session_state.auth["user_info"].get("email") not in allowed:
     blocked = ["your.email@gmail.com", "family@gmail.com"]
-    if st.session_state.auth["user_info"].get("email") in blocked:
-            st.warning("Account is blocked.  No edit permission for this account.")
+    #if st.session_state.auth["user_info"].get("email") in blocked:
+    #        st.warning("Account is blocked.  No edit permission for this account.")
     # else:
     #     if st.button("➕ Add new memory", type="primary"):
     #         st.session_state["adding_memory"] = True
@@ -1515,13 +1550,15 @@ full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {tim
 if "app_mode" not in st.session_state:
     st.session_state.app_mode = "View Mode"  # Default
 
-if st.session_state.auth.get("is_logged_in") and map_data and map_data.get("last_clicked"):
+#if st.session_state.auth.get("is_logged_in") and map_data and map_data.get("last_clicked"):
+if is_logged_in() and map_data and map_data.get("last_clicked"):
     st.session_state.add_new_memory = True
     pass
     # for display status purpose (not clean code)
 else:
-    if map_data and map_data.get("last_clicked") and not is_edit_mode:
-        st.sidebar.info("🔒 In **View Mode** — map clicks are disabled. Switch to **Edit Mode** to add memories.")
+    #if map_data and map_data.get("last_clicked") and not is_edit_mode:
+    if map_data and map_data.get("last_clicked"):
+            st.sidebar.info("🔒 In **View Mode** — map clicks are disabled. Switch to **Edit Mode** to add memories.")
 
 if map_data and map_data.get("center"):
     st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
@@ -1648,10 +1685,13 @@ if not st.session_state.auth.get("is_logged_in", False):
         )
 
         if result and result.get("token"):
+            token = result["token"]
             st.session_state.auth["token"] = result["token"]
             st.session_state.auth["user_info"] = result.get("user_info", {})
             st.session_state.auth["is_logged_in"] = True
             st.session_state.current_journey_locked = False
+            if token.get("refresh_token"):
+                st.session_state.auth["refresh_token"] = token["refresh_token"]
             st.rerun()
 else:
     # st.success(f"Logged in as {st.session_state.auth['user_info'].get('name', 'User')}")
