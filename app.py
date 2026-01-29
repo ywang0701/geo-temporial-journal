@@ -1515,7 +1515,8 @@ full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {tim
 if "app_mode" not in st.session_state:
     st.session_state.app_mode = "View Mode"  # Default
 
-if st.session_state.app_mode and map_data and map_data.get("last_clicked"):
+if st.session_state.auth.get("is_logged_in") and map_data and map_data.get("last_clicked"):
+    st.session_state.add_new_memory = True
     pass
     # for display status purpose (not clean code)
 else:
@@ -1531,8 +1532,8 @@ if map_data and map_data.get("center"):
 if st.session_state.editing_event_id and st.session_state.add_new_memory:
     st.session_state.add_new_memory = False  # editing takes priority
 # todo
-if st.session_state.auth.get("is_logged_in", False):
-    st.session_state.add_new_memory = True
+#if st.session_state.auth.get("is_logged_in", False):
+#    st.session_state.add_new_memory = True
 
 logger.info(f"add new marker ----------->  {st.session_state.editing_event_id}   {st.session_state.add_new_memory}   {st.session_state.add_new_memory}")
 #if st.session_state.app_mode == "Edit Mode" and map_data and map_data.get("last_clicked"):
@@ -1556,8 +1557,8 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
         col_save, col_cancel = st.columns([1, 1])
         with col_save:
             save_clicked = st.form_submit_button("💾 Save Memory")
-        #with col_cancel:
-        #    cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
+        with col_cancel:
+            cancel_clicked = st.form_submit_button("❌ Cancel", type="secondary")
 
         if save_clicked:
             if not title.strip():
@@ -1613,158 +1614,15 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                 st.success("Memory added!")
                 st.rerun()
         # === CANCEL BUTTON — OUTSIDE THE FORM ===
-        if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+        if cancel_clicked:
+        #if st.sidebar.button("❌ Cancel Adding Memory", type="secondary"):
+            st.session_state.last_map_clicked = None
+            st.session_state.show_add_marker_form = False
             st.session_state.current_journey_locked = False
             st.session_state.add_new_memory = False
+            st.session_state.force_map_refresh += 1
             st.success("Adding Memory cancelled!")
             st.rerun()  # Clears the form by removing last_clicked state
-        #if cancel_clicked:
-        #    st.rerun()
-#else:
-#    if map_data and map_data.get("last_clicked"):
-#        st.sidebar.info("🔒 This journey is locked — cannot add new memories")
-
-# # ==================== EDITING EXISTING EVENT ====================
-# if not st.session_state.current_journey_locked and st.session_state.editing_event_id:
-#     event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.editing_event_id), None)
-#     if event:
-#         if map_data and map_data.get("last_clicked"):
-#             click = map_data["last_clicked"]
-#             lat, lon = click["lat"], click["lng"]
-#             # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#             st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#             #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#             #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#             #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#             st.session_state.latitude = lat
-#             st.session_state.longitude = lon
-#
-#
-#         st.sidebar.header(f"✏️ Editing: {event['title']}")
-#
-#         cur_lat = event["location"]["latitude"]
-#         cur_lon = event["location"]["longitude"]
-#         if st.session_state.latitude == 1.11:
-#             st.session_state.latitude = cur_lat
-#         if st.session_state.longitude== 1.11:
-#             st.session_state.longitude = cur_lon
-#         st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#         #st.sidebar.markdown(f"**Current:** Lat {cur_lat:.6f} | Lon {cur_lon:.6f}")
-#         st.sidebar.markdown(f"**Current:** Lat {st.session_state.latitude:.6f} | Lon {st.session_state.longitude:.6f}")
-#
-#         #new_lat = st.sidebar.number_input("Latitude", value=cur_lat, step=0.000001, format="%.6f")
-#         #new_lon = st.sidebar.number_input("Longitude", value=cur_lon, step=0.000001, format="%.6f")
-#
-#         new_lat = st.sidebar.number_input("Latitude", value=st.session_state.latitude, step=0.000001, format="%.6f")
-#         new_lon = st.sidebar.number_input("Longitude", value=st.session_state.longitude, step=0.000001, format="%.6f")
-#
-#         for mtype, label in [("photos", "Photos"), ("videos", "Videos")]:
-#             st.sidebar.markdown(f"### Current {label}")
-#             paths = event["media"].get(mtype, []).copy()
-#             if paths:
-#                 cols = st.sidebar.columns(3 if mtype == "photos" else 2)
-#                 for i, p in enumerate(paths):
-#                     if os.path.exists(p):
-#                         with cols[i % len(cols)]:
-#                             if mtype == "photos":
-#                                 st.image(p, width=150)
-#                             else:
-#                                 st.video(p)
-#                             if st.button("Remove", key=f"del_{mtype}_{i}_{event['id']}"):
-#                                 os.remove(p)
-#                                 event["media"][mtype].remove(p)
-#                                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False),
-#                                 #                     encoding="utf-8")
-#                                 save_data_to_storage(st.session_state.data)
-#                                 st.rerun()
-#             else:
-#                 st.sidebar.info(f"No {label.lower()}")
-#
-#         with st.sidebar.form("edit_form"):
-#             if map_data and map_data.get("last_clicked"):
-#                 click = map_data["last_clicked"]
-#                 lat, lon = click["lat"], click["lng"]
-#                 #lat, lon = round(click["lat"], 6), round(click["lng"], 6)
-#                 #default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-#                 #st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-#                 #st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-#                 #st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
-#                 st.session_state.latitude = lat
-#                 st.session_state.longitude = lon
-#                 pass
-#             new_title = st.text_input("Title", event["title"])
-#             new_date = st.date_input("Date", datetime.strptime(event["date"], "%Y-%m-%d").date(),
-#                                      #min_value=datetime(1920, 1, 1).date(),
-#                                      min_value=MIN_DATE,
-#                                      max_value=MAX_DATE)
-#             #new_loc = st.text_input("Location Name", event["location"]["name"]) #TODO
-#             new_loc = st.text_input("Location Name", st.session_state.default_name)
-#             new_desc = st.text_area("Description", event.get("description", ""))
-#             add_photos = st.file_uploader("Add Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif","heic","HEIC","heif","HEIF"],
-#                                           key=f"add_ph_{event['id']}")
-#             add_videos = st.file_uploader("Add Videos", accept_multiple_files=True, type=["mp4", "mov", "webm"],
-#                                           key=f"add_vid_{event['id']}")
-#
-#             if st.form_submit_button("💾 Save Changes", type="primary"):
-#                 event["location"]["latitude"] = new_lat
-#                 event["location"]["longitude"] = new_lon
-#                 event["title"] = new_title
-#                 event["date"] = new_date.strftime("%Y-%m-%d")
-#                 event["location"]["name"] = new_loc
-#                 event["description"] = new_desc
-#
-#                 # --- Upload new photos (FIXED) ---
-#                 for up in add_photos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"photos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_PHOTOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 url = str(local_path)
-#                             event["media"].setdefault("photos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload photo {up.name}: {e}")
-#
-#                 # --- Upload new videos (FIXED) ---
-#                 for up in add_videos or []:
-#                     if up is not None:
-#                         fname = f"{int(time.time())}_{up.name}"
-#                         try:
-#                             file_bytes = up.getvalue()
-#                             if not file_bytes:
-#                                 continue
-#                             if IS_CLOUD:
-#                                 url = upload_to_gcs(file_bytes, f"videos/{fname}", up.type)
-#                             else:
-#                                 local_path = UPLOADS_VIDEOS / fname
-#                                 local_path.write_bytes(file_bytes)
-#                                 url = str(local_path)
-#                             event["media"].setdefault("videos", []).append(url)
-#                         except Exception as e:
-#                             st.error(f"Failed to upload video {up.name}: {e}")
-#
-#                 # todo JSON_FILE.write_text(json.dumps(st.session_state.data, indent=4, ensure_ascii=False), encoding="utf-8")
-#                 save_data_to_storage(st.session_state.data)
-#                 st.session_state.force_map_refresh += 1
-#                 st.session_state.editing_event_id = None
-#                 st.success("Changes saved!")
-#                 st.rerun()
-#
-#             if st.sidebar.button("Cancel Editing"):
-#                 st.session_state.editing_event_id = None
-#                 st.rerun()
-# else:
-#     if st.session_state.editing_event_id:
-#         st.warning("Cannot edit — journey is locked")
-#         st.session_state.editing_event_id = None
-#         st.rerun()
 
 # ============================================================================
 #  Login / Logout area — placed where you want the jump target
@@ -2624,9 +2482,9 @@ for idx, event in enumerate(sorted_events, start=1):
                 lat, lon = click["lat"], click["lng"]
                 # lat, lon = round(click["lat"], 6), round(click["lng"], 6)
                 st.session_state.default_name = f"{st.session_state.latitude:.5f}, {st.session_state.longitude:.5f}"
-                # st.markdown(f" 1 EDITY lat, lon **{lat}, {lon}**")
-                # st.markdown(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
-                # st.markdown(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
+                logger.info(f" 1 EDITY lat, lon **{lat}, {lon}**")
+                logger.info(f" 2 EDITY lat, lon **{event["location"]["latitude"]}")
+                logger.info(f" 3 EDITY lat, lon **{event["location"]["longitude"]}")
                 st.session_state.latitude = lat
                 st.session_state.longitude = lon
 
@@ -2651,15 +2509,16 @@ for idx, event in enumerate(sorted_events, start=1):
                         if abs(st.session_state[current_lat_key] - lat_value) > 1e-6:
                             st.session_state[current_lat_key] = lat_value
                             # st.rerun()   # often helps — try with & without
-                    # new_lat = st.number_input(
-                    #     "Latitude",
-                    #     #value=lat_value,
-                    #     #value=float(event["location"]["latitude"]),
-                    #     value=lat_value,
-                    #     format="%.6f", step=0.000001,
-                    #     key=f"lat_{event['id']}"
-                    # )
-                    new_lat = st.number_input("Latitude", key=f"lat_{event['id']}", format="%.6f", step=0.000001)
+                    new_lat = st.number_input(
+                        "Latitude",
+                        #value=lat_value,
+                        #value=float(event["location"]["latitude"]),
+                        value=lat_value,
+                        format="%.6f", step=0.000001,
+                        key=f"lat_{event['id']}"
+                    )
+
+                   # new_lat = st.number_input("Latitude", key=f"lat_{event['id']}", format="%.6f", step=0.000001)
 
                 with col_lon:
                     current_lon_key = f"lon_{event['id']}"
@@ -2667,15 +2526,15 @@ for idx, event in enumerate(sorted_events, start=1):
                         if abs(st.session_state[current_lon_key] - lon_value) > 1e-6:
                             st.session_state[current_lon_key] = lon_value
                             # st.rerun()   # often helps — try with & without
-                    # new_lon = st.number_input(
-                    #     "Longitude",
-                    #     #value=lon_value,
-                    #     value=lon_value,
-                    #     #value=float(event["location"]["longitude"]),
-                    #     format="%.6f", step=0.000001,
-                    #     key=f"lon_{event['id']}"
-                    # )
-                    new_lon = st.number_input("Longitude", key=f"lon_{event['id']}", format="%.6f", step=0.000001)
+                    new_lon = st.number_input(
+                        "Longitude",
+                        #value=lon_value,
+                        value=lon_value,
+                        #value=float(event["location"]["longitude"]),
+                        format="%.6f", step=0.000001,
+                        key=f"lon_{event['id']}"
+                    )
+                    # new_lon = st.number_input("Longitude", key=f"lon_{event['id']}", format="%.6f", step=0.000001)
 
                 new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
                 new_date = st.date_input(
