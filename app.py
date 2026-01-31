@@ -133,7 +133,10 @@ if "auth" not in st.session_state:
 
 # ── Silent re-auth using refresh token ───────────────────────────────
 
-if not st.session_state.auth.get("is_logged_in", False):
+def is_logged_in():
+    return st.session_state.auth.get("is_logged_in", False)
+#if not st.session_state.auth.get("is_logged_in", False):
+if not is_logged_in():
     refresh_token = st.session_state.auth.get("refresh_token")
 
     if refresh_token:
@@ -182,8 +185,6 @@ try:
 except Exception as e:
     st.sidebar.warning(f"Could not read config.toml: {e}")
 
-def is_logged_in():
-    return st.session_state.auth.get("is_logged_in", False)
 
 def init_gcs_bucket_from_env():
     sa_json = os.getenv("GCP_SA_JSON")
@@ -241,7 +242,8 @@ def upload_to_gcs(file_data, destination_blob_name, content_type="application/oc
         raise TypeError(f"upload_to_gcs: unsupported type {type(file_data)}")
 
     blob.upload_from_string(data, content_type=content_type)
-    return f"gs://{bucket.name}/{destination_blob_name}"
+    #return f"gs://{bucket.name}/{destination_blob_name}"
+    return f"{destination_blob_name}"
 
 def download_from_gcs(blob_name):
     blob = bucket.blob(blob_name)
@@ -404,7 +406,8 @@ if "journey" in st.query_params:
 #         return lock_path.exists()
 
 def is_journey_locked(json_filename):
-    if not st.session_state.auth.get("is_logged_in"):
+    #if not st.session_state.auth.get("is_logged_in"):
+    if not is_logged_in():
         logger.info(f"Journey '{json_filename}' is locked: user not authenticated")
         return True
 
@@ -1385,7 +1388,7 @@ st.markdown(css, unsafe_allow_html=True)
 
 # ── Edit controls — only shown/enabled when logged in ────────────────────
 #if st.session_state.auth["is_logged_in"]:
-if is_logged_in:
+if is_logged_in():
     #st.markdown("---")
     #st.subheader("Edit Controls")
 
@@ -1393,8 +1396,8 @@ if is_logged_in:
     allowed = ["your.email@gmail.com", "family@gmail.com"]
     #if st.session_state.auth["user_info"].get("email") not in allowed:
     blocked = ["your.email@gmail.com", "family@gmail.com"]
-    #if st.session_state.auth["user_info"].get("email") in blocked:
-    #        st.warning("Account is blocked.  No edit permission for this account.")
+    if st.session_state.auth["user_info"].get("email") in blocked:
+            st.warning("Account is blocked.  No edit permission for this account.")
     # else:
     #     if st.button("➕ Add new memory", type="primary"):
     #         st.session_state["adding_memory"] = True
@@ -1668,7 +1671,8 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
 
 st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 # Anchor target is already defined above: id="login-area"
-if not st.session_state.auth.get("is_logged_in", False):
+#if not st.session_state.auth.get("is_logged_in", False):
+if not is_logged_in():
     with st.container():
 
         result = oauth2.authorize_button(
@@ -2361,7 +2365,8 @@ locked = st.session_state.current_journey_locked
 # ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
 #st.sidebar.markdown("### Journey Status")
 
-if st.user.is_logged_in:
+#if st.user.is_logged_in():
+if is_logged_in():
 
     locked = st.session_state.get("current_journey_locked", False)
     if locked:
