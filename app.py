@@ -1472,7 +1472,7 @@ if data["events"]:
         span_days = (max_event - min_event).days
         span_days = max(span_days, 1)
 
-        padding_days = max(int(span_days * 0.05), 60)  # 5% or at least 60 days
+        padding_days = max(int(span_days * 0.05), 30)  # 5% or at least 60 days
 
         min_date = min_event - timedelta(days=padding_days)
         max_date = max_event + timedelta(days=padding_days)
