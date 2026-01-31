@@ -33,6 +33,8 @@ import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
 from streamlit_oauth import OAuth2Component
 from io import BytesIO
+import simplekml
+from datetime import datetime
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -162,17 +164,11 @@ if not is_logged_in():
             }
 
 
-
-
-
 # === DETECT IF RUNNING ON STREAMLIT CLOUD ===
-# IS_CLOUD = os.getenv("DEPLOY_ENV") == "cloud"   # Set key: DEPLOY_ENV, value: cloud
-#IS_CLOUD = False # HF is local  CLOUD is GCP
 
 # ---- ENV DETECTION ----
 IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
 IS_CLOUD = IS_HF                     # treat HF as cloud backend
-
 
 try:
     repo_root = Path(__file__).resolve().parents[1]
@@ -422,8 +418,6 @@ def is_journey_locked(json_filename):
         logger.debug(f"Local lock check for '{json_filename}': {lock_exists}")
         return lock_exists
 
-import simplekml
-from datetime import datetime
 
 def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     """
@@ -578,6 +572,11 @@ def export_to_kml_bytes(events) -> bytes:
 
     return kml.kml().encode("utf-8")
 
+
+
+
+
+
 # st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
 #if "selected_json_file" not in st.session_state:
 #    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
@@ -650,7 +649,6 @@ else:
 
 
 
-
 # Right after st.session_state.selected_json_file = json_name
 st.session_state.current_journey_locked = is_journey_locked(st.session_state.selected_json_file)
 
@@ -661,7 +659,7 @@ local_json_files = available_journeys
 # Get filename without extension and path
 json_filename = st.session_state.selected_json_file # e.g., "life_events", "my_family_memories", "john_2025"
 
-# Clean up common patterns for nicer display
+###### TODO Clean up common patterns for nicer display
 display_name = json_filename.replace("_", " ").replace("-", " ")
 # Capitalize each word
 display_name = " ".join(word.capitalize() for word in display_name.split())
@@ -1436,7 +1434,7 @@ if data["events"]:
         with col_num:
             marker_id = st.number_input("Go to marker ID", min_value=1, max_value=len(sorted_events), value=1, step=1, label_visibility="collapsed")
         with col_btn:
-            if st.button("Visit => Marker"):
+            if st.button("Marker =>"):
                 if 1 <= marker_id <= len(sorted_events):
                     idx = marker_id - 1
                     event = sorted_events[idx]
@@ -1697,7 +1695,7 @@ if not is_logged_in():
             pkce="S256",
             use_container_width=True,
         )
-
+        st.title("👆 Click **Sign in with Google** above to begin ✨")
         if result and result.get("token"):
             token = result["token"]
             st.session_state.auth["token"] = result["token"]
