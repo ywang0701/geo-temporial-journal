@@ -1463,8 +1463,19 @@ if data["events"]:
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
 
     if dates:
-        min_date = min(dates) - timedelta(days=365 * 2)
-        max_date = max(dates) + timedelta(days=365 * 5)
+        #min_date = min(dates) - timedelta(days=365 * 2)
+        #max_date = max(dates) + timedelta(days=365 * 5)
+        #total_span = (max_date - min_date).days or 1
+
+        min_event = min(dates)
+        max_event = max(dates)
+        span_days = (max_event - min_event).days
+        span_days = max(span_days, 1)
+
+        padding_days = max(int(span_days * 0.05), 60)  # 5% or at least 60 days
+
+        min_date = min_event - timedelta(days=padding_days)
+        max_date = max_event + timedelta(days=padding_days)
         total_span = (max_date - min_date).days or 1
 
         st.markdown("<div class='timeline-container'>", unsafe_allow_html=True)
@@ -1475,7 +1486,6 @@ if data["events"]:
             position = ((dt - min_date).days / total_span) * 100
             escaped_title = html.escape(event.get('title', 'Untitled'))
             escaped_desc  = html.escape(event.get('description', 'Description:'))
-
             timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
             timeline_html += f'''
             <div class="timeline-label-frame" style="left: {position}%;">
