@@ -242,8 +242,8 @@ def upload_to_gcs(file_data, destination_blob_name, content_type="application/oc
         raise TypeError(f"upload_to_gcs: unsupported type {type(file_data)}")
 
     blob.upload_from_string(data, content_type=content_type)
-    #return f"gs://{bucket.name}/{destination_blob_name}"
-    return f"{destination_blob_name}"
+    return f"gs://{bucket.name}/{destination_blob_name}"
+    #return f"{destination_blob_name}"
 
 def download_from_gcs(blob_name):
     blob = bucket.blob(blob_name)
