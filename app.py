@@ -296,6 +296,9 @@ if "add_new_memory" not in st.session_state:
 if "name" not in st.session_state:
     st.session_state.name = "Logged in User"
 
+if "goto_marker" not in st.session_state:
+    st.session_state.goto_marker = False
+
 class init_user:
     is_logged_in = False
     name = "init_user"
@@ -1534,7 +1537,7 @@ if data["events"]:
     with col_reset:
         if st.button("Full View"):
             st.session_state.map_center = [20, 0]
-            st.session_state.map_zoom = 2
+            st.session_state.map_zoom = 4
             st.session_state.force_map_refresh += 1
             st.session_state.reset = True
             st.rerun()
@@ -1546,6 +1549,7 @@ if data["events"]:
         with col_btn:
             if st.button("Marker =>"):
                 if 1 <= marker_id <= len(sorted_events):
+                    st.session_state.goto_marker = True
                     idx = marker_id - 1
                     event = sorted_events[idx]
                     lat = event["location"]["latitude"]
@@ -1562,6 +1566,65 @@ if data["events"]:
                     ## st.rerun()
                 else:
                     st.error("Invalid marker ID")
+
+    # =================== use .fit_bound approach ==== save for future improvements
+    # if event_count >= 15:
+    #     with col_num:
+    #         marker_id = st.number_input(
+    #             "Go to marker ID",
+    #             min_value=1,
+    #             max_value=len(sorted_events),
+    #             value=1,
+    #             step=1,
+    #             label_visibility="collapsed"
+    #         )
+    #
+    #     with col_btn:
+    #         if st.button("Marker =>"):
+    #             if 1 <= marker_id <= len(sorted_events):
+    #                 idx = marker_id - 1
+    #                 event = sorted_events[idx]
+    #
+    #                 try:
+    #                     lat = float(event["location"]["latitude"])
+    #                     lon = float(event["location"]["longitude"])
+    #
+    #                     # Small town-scale bounding box around the marker
+    #                     # ~0.08° padding ≈ 8–9 km radius — good for town overview
+    #                     pad = 0.08
+    #                     bounds = [
+    #                         [lat - pad, lon - pad],
+    #                         [lat + pad, lon + pad]
+    #                     ]
+    #
+    #                     # Apply fit_bounds to the current map
+    #                     main_map.fit_bounds(
+    #                         bounds,
+    #                         padding=(50, 70)  # slightly more bottom space
+    #                     )
+    #
+    #                     # Lock zoom to town scale
+    #                     main_map.options["minZoom"] = 11  # city/town overview
+    #                     main_map.options["maxZoom"] = 14  # neighborhood level
+    #
+    #                     # Force redraw
+    #                     st.session_state.force_map_refresh += 1
+    #
+    #                     st.success(
+    #                         f"Jumped to marker {marker_id}: {event['title']} ({event['date']})"
+    #                     )
+    #
+    #                     # Optional debug (uncomment if needed)
+    #                     # logger.info(f"DEBUG: Jump to marker {marker_id} | lat/lon = {lat}, {lon}")
+    #                     # logger.info(f"DEBUG: Applied bounds = {bounds}")
+    #
+    #                     st.rerun()
+    #
+    #                 except (KeyError, ValueError, TypeError) as e:
+    #                     st.error(f"Cannot jump to marker: invalid location ({e})")
+    #
+    #             else:
+    #                 st.error("Invalid marker ID")
 
 #st.title(full_title)
 
@@ -1634,6 +1697,40 @@ zoom = st.session_state.map_zoom if st.session_state.map_zoom != 2 else None
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
 main_map = create_map()
+
+if not st.session_state.goto_marker:
+    coordinates = []
+    for event in st.session_state.data.get("events", []):
+        try:
+            lat = float(event["location"]["latitude"])
+            lon = float(event["location"]["longitude"])
+            coordinates.append([lat, lon])
+        except (KeyError, ValueError, TypeError):
+            continue
+    # ======================== calculate center and zoom ===============
+    if coordinates:
+        # coordinates = [[lat1, lon1], [lat2, lon2], ...]
+        min_lat = min(lat for lat, lon in coordinates)
+        max_lat = max(lat for lat, lon in coordinates)
+        min_lon = min(lon for lat, lon in coordinates)
+        max_lon = max(lon for lat, lon in coordinates)
+
+        # Optional: add padding in degrees (very effective for long journeys)
+        lat_span = max_lat - min_lat
+        lon_span = max_lon - min_lon
+        pad_lat = max(0.5, lat_span * 0.15)   # 15% extra or at least 0.5°
+        pad_lon = max(0.5, lon_span * 0.15)
+
+        bounds = [
+            [min_lat - pad_lat, min_lon - pad_lon],
+            [max_lat + pad_lat, max_lon + pad_lon]
+        ]
+
+        main_map.fit_bounds(bounds, padding=(60, 100))   # pixel padding — bottom heavier for vertical trips
+
+        # Optional safety limits
+        main_map.options["minZoom"] = 2
+        main_map.options["maxZoom"] = 14
 
 map_data = st_folium(
     main_map,
@@ -1805,7 +1902,7 @@ if not is_logged_in():
             pkce="S256",
             use_container_width=True,
         )
-        st.title("👆 Click **Sign in with Google** above to begin ✨")
+        st.title("👆 Click **Sign in with Google** above to begin (Scroll up if you don't see it) ✨")
         if result and result.get("token"):
             token = result["token"]
             st.session_state.auth["token"] = result["token"]
@@ -2200,7 +2297,7 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
     st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
     available_journeys = get_local_json_files()
     logger.info(f"About to export — passing {len(temp_data['events'])} events")
-    kml_bytes = export_to_kml_bytes(temp_data["events"])
+    # kml_bytes = export_to_kml_bytes(temp_data["events"])
     if not available_journeys:
         st.info("No journeys available to download.")
     else:
@@ -2214,6 +2311,7 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
         )
 
         if journey_to_kml:
+            kml_bytes = export_to_kml_bytes(temp_data["events"])
             # Load the selected journey data safely
             try:
                 blob_or_path = get_json_path(journey_to_kml) if IS_CLOUD else str(BASE_DIR / journey_to_kml)
