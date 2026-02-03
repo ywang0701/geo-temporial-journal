@@ -4,6 +4,9 @@
 # enableXsrfProtection = false
 # enableCORS = false
 # https://ywangperl-jj7.hf.space/?journey=7events.json (lower case)
+# video_url = f"https://storage.googleapis.com/journey-journal/{v.replace('gs://journey-journal/', '')}"
+# Remember to run gsutil iam ch allUsers:objectViewer gs://journey-journal once)
+# After running, open the .kml in Google Earth Pro or Google My Maps → click markers to see videos play and photos zoom.
 import streamlit as st
 from streamlit_folium import st_folium
 import streamlit.components.v1 as components
@@ -35,6 +38,9 @@ from streamlit_oauth import OAuth2Component
 from io import BytesIO
 import simplekml
 from datetime import datetime
+import simplekml
+from datetime import datetime
+import urllib.parse
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
@@ -78,6 +84,7 @@ if "reset_map" not in st.session_state:
 BASE_DIR = Path(os.getcwd()).resolve()
 
 # === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
+GCS_BUCKET_PREFIX = "https://storage.googleapis.com/journey-journal/"
 BUCKET_NAME = "journey-journal"  # Your GCS bucket name
 JOURNEYS_FOLDER = "journeys"      # Folder for JSON files
 PHOTOS_FOLDER = "photos"
@@ -419,79 +426,182 @@ def is_journey_locked(json_filename):
         return lock_exists
 
 
+
+def make_public_url(path):
+    if path.startswith("https://storage.googleapis.com/"):
+        return path
+    if path.startswith("gs://journey-journal/"):
+        return GCS_BUCKET_PREFIX + path[len("gs://journey-journal/"):]
+    if path.startswith(("photos/", "videos/")):
+        return GCS_BUCKET_PREFIX + path
+    if "uploads/" in path:
+        # last resort - only for very old local entries
+        return GCS_BUCKET_PREFIX + path.split("uploads/", 1)[-1]
+    # fallback - return as is (might not work)
+    return path
+
+
 def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     """
-    Creates KML with:
-    - Placemarks for each memory (with title, date, description)
-    - One continuous LineString for the journey path
-    - TimeStamp on each placemark → enables timeline animation in Google Earth
+    Updated version – 2026-02
+    • Uses direct public GCS URLs for both photos and videos
+    • Embedded <video> player for videos in popup
+    • Thumbnail <img> tags for photos with hover zoom
+    • Correct Snippet usage for tooltip
+    • Safe handling of missing/None values
     """
-    kml = simplekml.Kml(name="My Journey with Timeline", open=1)
+    kml = simplekml.Kml(name="My Journey • Photos + Videos", open=1)
 
-    # Sort events by date (safety)
     sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
 
     path_coords = []
 
-    # Nice style for the path (always visible)
     journey_line = kml.newlinestring(name="Journey Path")
-    journey_line.style.linestyle.color = simplekml.Color.teal  # or simplekml.Color.hex("50E3C2")
+    journey_line.style.linestyle.color = simplekml.Color.hex("008080c0")  # teal + ~75% opacity
     journey_line.style.linestyle.width = 5
     journey_line.altitudemode = simplekml.AltitudeMode.clamptoground
 
+    skipped = 0
+
     for idx, event in enumerate(sorted_events, 1):
         try:
-            lat = float(event["location"]["latitude"])
-            lon = float(event["location"]["longitude"])
-            coord = (lon, lat)  # KML: longitude first!
+            # Coordinates
+            loc = event.get("location", {})
+            lat = float(loc.get("latitude"))
+            lon = float(loc.get("longitude"))
+            coord = (lon, lat)
             path_coords.append(coord)
 
-            title = event.get("title", f"Memory #{idx}")
-            date_str = event.get("date", None)
-            desc = event.get("description", "No description")
+            title    = event.get("title", f"Memory #{idx}")
+            date_str = event.get("date", "Unknown date")
+            desc     = event.get("description") or ""
+            loc_name = loc.get("name", "Unnamed location")
 
+            # Tooltip (mouse hover)
+            short_desc = (desc[:100] + "...") if len(desc) > 100 else desc
+            tooltip_text = f"{idx}. {date_str} – {title}\n{short_desc or loc_name}"
+            tooltip = simplekml.Snippet(tooltip_text)
+
+            # Build popup HTML
             popup_html = f"""
-            <h3 style="margin:0 0 8px 0;">{title}</h3>
-            <p style="color:#555; margin:4px 0;"><b>Date:</b> {date_str or 'Unknown'}</p>
-            <p style="margin:8px 0 12px 0;">{desc}</p>
+            <div style="font-family:Arial,sans-serif; max-width:540px; line-height:1.58; font-size:15px;">
+                <h2 style="margin:0 0 14px; color:#1a4976; text-align:center; font-size:23px;">
+                    {title}
+                </h2>
+                <p style="text-align:center; color:#444; font-weight:bold; margin:8px 0 18px;">
+                    📅 {date_str}  •  📍 {loc_name}
+                </p>
             """
 
-            photos = len(event["media"].get("photos", []))
-            videos = len(event["media"].get("videos", []))
-            if photos or videos:
-                popup_html += f'<p style="color:#666;font-style:italic;">{photos} photo(s) • {videos} video(s)</p>'
+            if desc:
+                popup_html += f"""
+                <p style="margin:16px 0 24px; padding:12px; background:#f8f9fa; border-left:4px solid #1a4976; white-space:pre-wrap;">
+                    {desc.replace("\n", "<br>")}
+                </p>
+                """
+
+            photos = event.get("media", {}).get("photos", [])
+            videos = event.get("media", {}).get("videos", [])
+
+            # ── VIDEOS ──────────────────────────────────────────────────────
+            if videos:
+                popup_html += '<h3 style="color:#d35400; margin:28px 0 14px; font-size:19px;">🎬 Videos</h3>'
+                for v in videos:
+                    # Normalize path to public HTTPS URL
+
+                    video_url = make_public_url(v)
+                    safe_url = urllib.parse.quote(video_url, safe=":/")
+
+                    popup_html += '<h3 style="color:#d35400; margin:28px 0 14px; font-size:19px;">🎬 Videos</h3>'
+                    for v in videos:
+                        video_url = make_public_url(v)
+                        safe_url = video_url  # usually safe without extra quoting
+
+                        popup_html += f"""
+                            <div style="margin:18px 0 24px; text-align:center; padding:10px; border:1px solid #eee; border-radius:8px;">
+                                <video controls style="width:100%; max-height:340px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+                                    <source src="{safe_url}" type="video/mp4">
+                                    <!-- No fallback text - we use link instead -->
+                                </video>
+                                <div style="margin-top:10px; font-size:14px;">
+                                    <a href="{safe_url}" target="_blank" style="color:#0066cc; text-decoration:none; font-weight:bold;">
+                                        ▶️ Play {v.split('/')[-1]} in new tab
+                                    </a>
+                                </div>
+                            </div>
+                            """
+
+            # ── PHOTOS ──────────────────────────────────────────────────────
+            if photos:
+                popup_html += f'<h3 style="color:#27ae60; margin:32px 0 14px; font-size:19px;">🖼 Photos ({len(photos)})</h3>'
+                popup_html += '<div style="display:flex; flex-wrap:wrap; gap:14px; justify-content:center;">'
+                for p in photos:
+                    # Normalize path to public HTTPS URL
+                    img_url = make_public_url(p)
+
+                    popup_html += f"""
+                    <a href="{img_url}" target="_blank">
+                        <img src="{img_url}"
+                             style="width:160px; height:160px; object-fit:cover; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.18); transition:transform 0.2s;"
+                             onmouseover="this.style.transform='scale(1.06)'"
+                             onmouseout="this.style.transform='scale(1)'">
+                    </a>
+                    """
+                popup_html += '</div>'
+
+            if not photos and not videos:
+                popup_html += '<p style="text-align:center; color:#777; font-style:italic; margin:32px 0;">No media attached</p>'
+
+            popup_html += """
+                <p style="text-align:center; color:#888; font-size:12px; margin-top:30px;">
+                    Journey Journal export • 一叶舟 🔥
+                </p>
+            </div>
+            """
 
             # Create placemark
             pnt = kml.newpoint(
-                name=f"{idx}. {date_str or 'Unknown'} – {title}",
+                name=f"{idx}. {date_str} – {title}",
                 description=popup_html,
                 coords=[coord]
             )
 
-            # Icon
-            pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
-            pnt.style.iconstyle.scale = 1.1
+            # Tooltip
+            pnt.snippet = tooltip
 
-            # ── KEY PART: Add TimeStamp for timeline animation ──
-            if date_str:
+            # Marker icon
+            pnt.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"
+            pnt.style.iconstyle.scale = 1.2
+
+            # Timeline support
+            if date_str and len(date_str) == 10:
                 try:
-                    # Parse your date (YYYY-MM-DD) and set a default time (noon UTC)
                     dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    # Format as ISO 8601: yyyy-mm-ddThh:mm:ssZ (Z = UTC)
-                    iso_time = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
-                    pnt.timestamp.when = iso_time
+                    pnt.timestamp.when = dt.replace(hour=12, minute=0, second=0).isoformat() + "Z"
                 except ValueError:
-                    # If date parsing fails, skip timestamp (still usable)
                     pass
 
-        except (KeyError, ValueError, TypeError):
+        except Exception as e:
+            print(f"Skipped event #{idx}: {str(e)}")
+            skipped += 1
             continue
 
-    # Add connecting path (always visible)
+    # Final path
     if len(path_coords) >= 2:
         journey_line.coords = path_coords
+    elif path_coords:
+        note = kml.newpoint(name="Only one location – no path drawn")
+        note.coords = [path_coords[0]]
+        note.style.iconstyle.icon.href = "http://maps.google.com/mapfiles/kml/shapes/info.png"
 
-    kml.save(output_filename)
+    try:
+        kml.save(output_filename)
+        print(f"KML saved successfully: {output_filename}")
+        print(f"  • Placemarks created: {len(path_coords)}")
+        print(f"  • Events skipped: {skipped}")
+    except Exception as save_err:
+        print(f"Failed to save KML file: {save_err}")
+
     return output_filename
 
 def export_to_kml_bytes(events) -> bytes:
