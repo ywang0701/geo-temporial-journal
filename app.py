@@ -3082,3 +3082,5 @@ else:
                 st.session_state.force_map_refresh += 1
                 st.rerun()
 
+st.markdown("---")
+st.caption('[Privacy Statement](https://github.com/ywang0701/geo-temporial-journal/blob/main/privacy.txt)', unsafe_allow_html=True)
