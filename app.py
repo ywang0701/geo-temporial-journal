@@ -7,80 +7,34 @@
 # video_url = f"https://storage.googleapis.com/journey-journal/{v.replace('gs://journey-journal/', '')}"
 # Remember to run gsutil iam ch allUsers:objectViewer gs://journey-journal once)
 # After running, open the .kml in Google Earth Pro or Google My Maps → click markers to see videos play and photos zoom.
-import streamlit as st
-from streamlit_folium import st_folium
-import streamlit.components.v1 as components
-import folium
-from folium.plugins import MarkerCluster
-from folium.plugins import AntPath, MarkerCluster  # Add AntPath here
-import json
-import sys
-from datetime import datetime, timedelta, date
-import time
 import base64
-import logging
-from pathlib import Path
 import html
-import argparse
-# === NEW IMPORTS FOR GOOGLE CLOUD STORAGE ===
-import os
-from google.cloud import storage
-from google.oauth2 import service_account
-import simplekml
-import re
-import toml
 import io
-import zipfile
+import json
+import logging
 import mimetypes
+import os
+import re
+import time
+import urllib.parse
+import zipfile
+from datetime import date, datetime, timedelta
+from io import BytesIO
+from pathlib import Path
+
+import folium
+import simplekml
 import streamlit as st
 import streamlit.components.v1 as components  # ← Correct import for current Streamlit
+import toml
+from folium.plugins import MarkerCluster  # Add AntPath here
+from google.cloud import storage
+from google.oauth2 import service_account
+from streamlit_folium import st_folium
 from streamlit_oauth import OAuth2Component
-from io import BytesIO
-import simplekml
-from datetime import datetime
-import simplekml
-from datetime import datetime
-import urllib.parse
 
 DEFAULT_ACTIVE_JSON="YourFirstJourney.json"
 #ALLOWED_EDIT_EMAILS = ["your.email@gmail.com", "family.member@gmail.com"]
-
-# ==================== LOGGING & PATHS ====================
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Create a formatter with timestamp
-formatter = logging.Formatter(
-    fmt='%(asctime)s | %(levelname)8s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-# StreamHandler sends output to console (visible in Streamlit Cloud logs)
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-
-# Only add handler once (important for Streamlit reruns)
-if not logger.handlers:
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)   # Change to DEBUG for more verbose output
-
-# Quick test log on startup
-logger.info("🚀 App started")
-#logger.info(f"Detected IS_CLOUD = {os.getenv('DEPLOY_ENV') == 'cloud'}")
-
-if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
-if "reset_map" not in st.session_state:
-    st.session_state.reset_map = True
-
-#if getattr(sys, 'frozen', False):
-#    BASE_DIR = Path(sys.executable).parent
-#else:
-#    BASE_DIR = Path(__file__).resolve().parent
-
-#EBASE_DIR = Path("/adata/JJ")
-# BASE_DIR = Path(__file__).resolve().parent
 BASE_DIR = Path(os.getcwd()).resolve()
 
 # === DEFINE FOLDERS (CRITICAL - you were missing this!) ===
@@ -107,8 +61,6 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 REFRESH_URL = "https://oauth2.googleapis.com/token"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
-# This MUST match what you registered in Google Console:
-# http://localhost:8501/component/streamlit_oauth.authorize_button
 REDIRECT_URI = st.secrets.get(
     "GOOGLE_REDIRECT_URI",
     os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/component/streamlit_oauth.authorize_button"),
@@ -117,10 +69,6 @@ REDIRECT_URI = st.secrets.get(
 SCOPE = "openid email profile"
 
 # st.title("Google OAuth (streamlit-oauth v0.1.14)")
-#
-# ----------------------------
-# Create OAuth component
-# ----------------------------
 oauth2 = OAuth2Component(
     CLIENT_ID,
     CLIENT_SECRET,
@@ -129,6 +77,69 @@ oauth2 = OAuth2Component(
     REFRESH_URL,
     REVOKE_URL,
 )
+
+# ==================== LOGGING & PATHS ====================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create a formatter with timestamp
+formatter = logging.Formatter(
+    fmt='%(asctime)s | %(levelname)8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# StreamHandler sends output to console (visible in Streamlit Cloud logs)
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+# Only add handler once (important for Streamlit reruns)
+if not logger.handlers:
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)   # Change to DEBUG for more verbose output
+
+# Quick test log on startup
+logger.info("🚀 App started")
+if "edit_lat" not in st.session_state:
+    st.session_state.edit_lat = None
+if "edit_lon" not in st.session_state:
+    st.session_state.edit_lon = None
+if "default_location" not in st.session_state:
+    st.session_state.default_name= None
+if "current_journey_locked" not in st.session_state:
+    st.session_state.current_journey_locked = False
+if "add_new_memory" not in st.session_state:
+    st.session_state.add_new_memory = False
+if "name" not in st.session_state:
+    st.session_state.name = "Logged in User"
+if "goto_marker" not in st.session_state:
+    st.session_state.goto_marker = False
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
+if "reset_map" not in st.session_state:
+    st.session_state.reset_map = True
+if "edit_lat" not in st.session_state:
+    st.session_state.edit_lat = None
+if "edit_lon" not in st.session_state:
+    st.session_state.edit_lon = None
+if "editing_event_id" not in st.session_state:
+    st.session_state.editing_event_id = None
+if "map_center" not in st.session_state:
+    st.session_state.map_center = [20, 0]
+if "map_zoom" not in st.session_state:
+    st.session_state.map_zoom = 2
+if "force_map_refresh" not in st.session_state:
+    st.session_state.force_map_refresh = 0
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = "View Mode"  # Default
+if "lat_edit" not in st.session_state:
+    st.session_state.edit_lat = None
+if "lon_edit" not in st.session_state:
+    st.session_state.edit_lon = None
+if "selected_json_file" not in st.session_state:
+    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
+if "selected_event_id" not in st.session_state:
+    st.session_state.selected_event_id = None
+
 
 # ── Auth state initialization (MUST BE FIRST) ───────────────────────
 
@@ -144,7 +155,6 @@ if "auth" not in st.session_state:
 
 def is_logged_in():
     return st.session_state.auth.get("is_logged_in", False)
-#if not st.session_state.auth.get("is_logged_in", False):
 if not is_logged_in():
     refresh_token = st.session_state.auth.get("refresh_token")
 
@@ -169,58 +179,6 @@ if not is_logged_in():
                 "user_info": None,
                 "is_logged_in": False
             }
-
-
-# === DETECT IF RUNNING ON STREAMLIT CLOUD ===
-
-# ---- ENV DETECTION ----
-IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
-IS_CLOUD = IS_HF                     # treat HF as cloud backend
-
-try:
-    repo_root = Path(__file__).resolve().parents[1]
-    config_path = repo_root / ".streamlit" / "config.toml"
-
-    config = toml.load(config_path)
-    xsrf = config.get("server", {}).get("enableXsrfProtection", "not set")
-    st.sidebar.info(f"XSRF protection status: {xsrf}")
-
-except Exception as e:
-    st.sidebar.warning(f"Could not read config.toml: {e}")
-
-
-def init_gcs_bucket_from_env():
-    sa_json = os.getenv("GCP_SA_JSON")
-    bucket_name = os.getenv("GCS_BUCKET_NAME")
-
-    if not sa_json:
-        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
-    if not bucket_name:
-        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
-
-    sa_info = json.loads(sa_json)
-    creds = service_account.Credentials.from_service_account_info(sa_info)
-    client = storage.Client(credentials=creds, project=sa_info["project_id"])
-    return client.bucket(bucket_name)
-
-
-if IS_CLOUD:
-    sa_json = os.getenv("GCP_SA_JSON")
-    bucket_name = os.getenv("GCS_BUCKET_NAME")
-
-    if not sa_json:
-        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
-    if not bucket_name:
-        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
-
-    sa_info = json.loads(sa_json)
-    creds = service_account.Credentials.from_service_account_info(sa_info)
-    storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
-    bucket = storage_client.bucket(bucket_name)
-    st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
-    bucket = init_gcs_bucket_from_env()
-else:
-    st.sidebar.info("🖥️ Running locally (filesystem)")
 
 
 def upload_to_gcs(file_data, destination_blob_name, content_type="application/octet-stream"):
@@ -268,141 +226,6 @@ def to_relative_path(path: Path) -> str:
     """Convert absolute Path to path relative to CWD (for JSON storage)"""
     return path.relative_to(BASE_DIR).as_posix()
 
-if IS_CLOUD:
-    pass
-else:
-    UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
-    UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
-    UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
-    UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
-
-if "edit_lat" not in st.session_state:
-    st.session_state.edit_lat = None
-if "edit_lon" not in st.session_state:
-    st.session_state.edit_lon = None
-
-if "default_location" not in st.session_state:
-    st.session_state.default_name= None
-
-if "selected_event_id" not in st.session_state:
-    st.session_state.selected_event_id = None
-
-if "current_journey_locked" not in st.session_state:
-    st.session_state.current_journey_locked = False
-
-if "add_new_memory" not in st.session_state:
-    st.session_state.add_new_memory = False
-
-if "name" not in st.session_state:
-    st.session_state.name = "Logged in User"
-
-if "goto_marker" not in st.session_state:
-    st.session_state.goto_marker = False
-
-class init_user:
-    is_logged_in = False
-    name = "init_user"
-    email = "init_user_email"
-    sub = "init_user_sub"
-
-st.user = init_user()
-# ──────────────────────────────────────────────────────────────
-#          TEMP BYPASS – Google login is broken right now
-# ──────────────────────────────────────────────────────────────
-
-# Force login for everyone (temporary dev workaround)
-if False:  # ← change to False when you fix real auth
-    if "bypass_auth" not in st.session_state:
-        st.session_state.bypass_auth = True
-        st.session_state.user_info = {
-            "name": "Test User 🔥",
-            "email": "test@example.com",
-            "sub": "bypass-20260119",
-        }
-
-    class FakeUser:
-        is_logged_in = True
-        name = st.session_state.user_info["name"]
-        email = st.session_state.user_info["email"]
-        sub = st.session_state.user_info["sub"]
-
-    st.user = FakeUser()
-
-    # Show warning banner so you don't forget
-    #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
-
-else:
-    pass
-
-# ==================== DEVICE DETECTION ====================
-if "device_type" not in st.session_state:
-    detect_js = """
-    <script>
-        function detectDevice() { const width = window.innerWidth; const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0; const ua = navigator.userAgent.toLowerCase(); const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
-
-            if (width <= 768 && (hasTouch || isMobileUA)) {
-                return "mobile";
-            } else if (width <= 1024) {
-                return "tablet";
-            } else {
-                return "desktop";
-            }
-        }
-
-        const device = detectDevice();
-
-        if (window.parent && window.parent.postMessage) {
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: device
-            }, '*');
-        }
-    </script>
-    """
-
-    returned_value = components.html(detect_js, height=0, width=0)
-    st.session_state.device_type = returned_value or "desktop"
-
-# Then set the initial sidebar based on device
-initial_sidebar = "collapsed" if st.session_state.device_type == "mobile" else "expanded"
-
-# ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
-# parser = argparse.ArgumentParser(description="My Life Journey App")
-# parser.add_argument(
-#    "--file",
-#    type=str,
-#    default=DEFAULT_ACTIVE_JSON,
-#    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
-# )
-# args = parser.parse_args()
-
-# ── Handle shared journey via URL query param ────────────────────────────────
-if "journey" in st.query_params:
-    requested = st.query_params["journey"][0] if isinstance(st.query_params["journey"], list) else st.query_params[
-        "journey"]
-    # Basic safety: must end with .json and no dangerous characters
-    if requested.endswith(".json") and all(c.isalnum() or c in "-_" for c in requested.replace(".json", "")):
-        # Optional: normalize (you can skip if filenames are already clean)
-        requested = requested.lower().replace(" ", "-") + ".json" if not requested.endswith(".json") else requested
-
-        # Check if this journey actually exists in GCS / local
-        blob_name = get_json_path(requested) if IS_CLOUD else str(BASE_DIR / requested)
-        try:
-            # Try a quick existence check (lightweight)
-            if IS_CLOUD:
-                bucket.blob(blob_name).exists()
-            else:
-                Path(blob_name).exists()
-
-            st.session_state.selected_json_file = requested
-            #st.session_state.app_mode = "View Mode"  # force read-only for shared links
-            st.toast(f"Opened shared journey: {requested.replace('.json', '').replace('-', ' ').title()}", icon="🔗")
-        except:
-            st.warning(f"Journey '{requested}' not found or inaccessible.")
-    else:
-        st.warning("Invalid journey link.")
-
-
 # def is_journey_locked(json_filename):
 #     if IS_CLOUD:
 #         lock_blob = bucket.blob(f"{JOURNEYS_FOLDER}/{json_filename}_lock")
@@ -428,8 +251,6 @@ def is_journey_locked(json_filename):
         logger.debug(f"Local lock check for '{json_filename}': {lock_exists}")
         return lock_exists
 
-
-
 def make_public_url(path):
     if path.startswith("https://storage.googleapis.com/"):
         return path
@@ -442,7 +263,6 @@ def make_public_url(path):
         return GCS_BUCKET_PREFIX + path.split("uploads/", 1)[-1]
     # fallback - return as is (might not work)
     return path
-
 
 def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     """
@@ -557,7 +377,7 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
 
             popup_html += """
                 <p style="text-align:center; color:#888; font-size:12px; margin-top:30px;">
-                    Journey Journal export • 一叶舟 🔥
+                    Journey Journal export • 旅行日志 🔥
                 </p>
             </div>
             """
@@ -685,21 +505,6 @@ def export_to_kml_bytes(events) -> bytes:
 
     return kml.kml().encode("utf-8")
 
-
-
-
-
-
-# st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
-#if "selected_json_file" not in st.session_state:
-#    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
-JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
-JSON_FILE = BASE_DIR / st.session_state.selected_json_file
-# st.sidebar.caption(f"📄 Using data file: `{st.session_state.selected_json_file}`")
-
-# ==================== SCAN FOR JSON FILES ====================
-
 def get_sorted_events_with_index():
     events = st.session_state.data.get("events", [])
     sorted_events = sorted(events, key=lambda x: x.get("date", "0000-00-00"))
@@ -724,97 +529,6 @@ def save_data_to_storage(data):
         logger.info(f" Save to local {JSON_FILE}")
         Path(JSON_FILE).write_text(json_text, encoding="utf-8")
 
-# === AUTO-CREATE FIRST JOURNEY IF NONE EXIST ===
-available_journeys = get_local_json_files()
-
-if not available_journeys:
-    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
-    st.session_state.selected_json_file = default_filename
-
-    # Recompute paths with the new selected file
-    #global JSON_BLOB_NAME, JSON_FILE
-    JSON_BLOB_NAME = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
-    JSON_FILE = BASE_DIR / default_filename
-
-    default_data = {
-        "autobiography": {
-            "title": "Your First Journey",
-            "author": "Your Name",
-            "created_date": datetime.now().strftime("%Y-%m-%d"),
-            "last_updated": datetime.now().strftime("%Y-%m-%d")
-        },
-        "events": []
-    }
-
-    # Now safe to save — all paths are defined
-    save_data_to_storage(default_data)
-    logger.info(f"🌟 Created default journey: {default_filename}")
-
-    # Reload data into session state
-    st.session_state.data = default_data
-    data = default_data
-
-    # Refresh list
-    available_journeys = get_local_json_files()
-else:
-    # Normal case: journeys exist
-    pass
-
-
-
-# Right after st.session_state.selected_json_file = json_name
-st.session_state.current_journey_locked = is_journey_locked(st.session_state.selected_json_file)
-
-
-local_json_files = available_journeys
-
-# ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
-# Get filename without extension and path
-json_filename = st.session_state.selected_json_file # e.g., "life_events", "my_family_memories", "john_2025"
-
-###### TODO Clean up common patterns for nicer display
-display_name = json_filename.replace("_", " ").replace("-", " ")
-# Capitalize each word
-display_name = " ".join(word.capitalize() for word in display_name.split())
-
-# Fallback if somehow empty
-if not display_name.strip():
-    display_name = "My Journey"
-
-# Get available journeys (local or cloud)
-available_journeys = get_local_json_files()
-local_json_files   = available_journeys
-
-# If NO journeys exist at all → create the default one
-if not available_journeys:
-    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
-    default_path_or_blob = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
-
-    # Only create if it really doesn't exist (safety)
-    exists = default_filename in available_journeys
-    if not exists:
-        default_data = {
-            "autobiography": {
-                "title": "Your First Journey",
-                "author": "Your Name",
-                "created_date": datetime.now().strftime("%Y-%m-%d"),
-                "last_updated": datetime.now().strftime("%Y-%m-%d")
-            },
-            "events": []
-        }
-        save_data_to_storage(default_data)  # This uses upload_to_gcs or local write correctly
-        logger.info(f"Created default journey: {default_filename}")
-
-        # Ensure it's selected
-        st.session_state.selected_json_file = default_filename
-
-    available_journeys = get_local_json_files()  # Refresh list
-
-#local_json_files = get_local_json_files()
-local_json_files = available_journeys
-
-
-# ==================== ROBUST DATA INITIALIZATION ====================
 def ensure_valid_json():
     if not JSON_FILE.exists() or JSON_FILE.stat().st_size == 0:
         default_data = {
@@ -859,74 +573,6 @@ def load_data_from_file(blob_or_path):
         save_data_to_storage(default_data)
         return default_data
 
-
-if "data" not in st.session_state:
-    #st.session_state.data = load_data_from_file(JSON_FILE)
-    st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
-
-ensure_valid_json()
-
-data = st.session_state.data
-
-local_json_files = get_local_json_files()
-
-# Calculate timeline year range (only if there are events)
-timeline_info = ""
-if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
-    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
-    if dates:
-        start_year = min(dates).year
-        end_year = max(dates).year
-        timeline_info = f" ({start_year} – {end_year})"
-        timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
-            "events"] else ""
-
-# ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
-json_filename = JSON_FILE.name
-if st.session_state.selected_json_file:
-    json_filename = st.session_state.selected_json_file
-
-display_name = json_filename.replace(".json", "").replace("_", " ").replace("-", " ")
-display_name = " ".join(word.capitalize() for word in display_name.split())
-
-memory_count = len(st.session_state.data.get("events", []))
-
-if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
-    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
-    start_year = min(dates).year
-    end_year = max(dates).year
-    timeline_info = f" ({start_year}–{end_year})"
-    timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
-        "events"] else ""
-else:
-    timeline_info = ""
-
-# Updated title: includes filename and count
-event_count = len(st.session_state.data.get("events", []))
-place_text = "memory" if event_count == 1 else "memories"
-memory_count_str = f"{event_count} {place_text}" if event_count > 0 else "no memory  yet"
-
-#full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
-full_title = f"🌍 Journey ({display_name}) – {memory_count_str}{timeline_info}"
-
-st.set_page_config(
-   page_title=full_title,
-   layout="wide",
-   initial_sidebar_state=initial_sidebar
-)
-
-# ==================== SESSION STATE INITIALIZATION ====================
-if "editing_event_id" not in st.session_state:
-    st.session_state.editing_event_id = None
-if "map_center" not in st.session_state:
-    st.session_state.map_center = [20, 0]
-if "map_zoom" not in st.session_state:
-    st.session_state.map_zoom = 2
-if "force_map_refresh" not in st.session_state:
-    st.session_state.force_map_refresh = 0
-
 def get_media_bytes(media_path: str):
     """Fetch bytes from GCS (gs://...) or local path."""
     if not media_path:
@@ -962,7 +608,6 @@ def get_video_base64(p):
         return base64.b64encode(data).decode('utf-8') if data else None
     except Exception:
         return None
-
 
 def get_color_by_year(d):
     y = int(d[:4])
@@ -1131,7 +776,6 @@ def restore_journey_package(zip_bytes: bytes) -> tuple[str, dict]:
 
         return journey_filename, data
 
-# ==================== POPUP ====================
 def build_popup_html(event):
     title = html.escape(event.get('title', 'Untitled'))
     desc = html.escape(event.get('description', '') or 'No description')
@@ -1194,7 +838,6 @@ def build_popup_html(event):
     popup += "</div>"
     return popup
 
-# ==================== MAP CREATION WITH CURVED JOURNEY LINES ====================
 def create_map():
     events = st.session_state.data["events"]
 
@@ -1231,7 +874,6 @@ def create_map():
     #     ]
     # else:
     #     filtered_events = events
-
 
     if not events:
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
@@ -1330,6 +972,444 @@ def create_map():
 
     #m.fit_bounds(coords, padding=(80, 80))
     return m
+
+from datetime import datetime
+import os
+from pathlib import Path
+import time
+
+def get_today_log_identifier() -> str:
+    """Returns the date part for today's log file, e.g. '2026-02-04'"""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def get_log_path_or_blob() -> str:
+    """Returns the full path/blob name for today's log file"""
+    date_str = get_today_log_identifier()
+    if IS_CLOUD:
+        return f"{LOG_PREFIX}_{date_str}.txt"
+    else:
+        return LOG_DIR / f"{LOG_BASE_NAME}_{date_str}.txt"
+
+
+def append_to_log(message: str, message_type: str = "general", throttle: bool = True):
+    """
+    Append one log line with timestamp.
+    Features:
+      - Daily rotation (new file each day)
+      - Throttling: avoid logging same message_type too frequently
+    """
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    log_line = f"[{timestamp}] {message}\n"
+
+    # Throttling check
+    if throttle:
+        last_time = _last_log_times.get(message_type, 0)
+        if time.time() - last_time < MIN_SECONDS_BETWEEN_SAME_MESSAGE:
+            return  # skip logging - too soon
+
+    # Update last log time
+    _last_log_times[message_type] = time.time()
+
+    if IS_CLOUD:
+        # ── GCS ────────────────────────────────────────────────────────
+        blob_name = get_log_path_or_blob()
+        blob = bucket.blob(blob_name)
+        try:
+            if blob.exists():
+                existing = blob.download_as_text(encoding="utf-8")
+                new_content = existing.rstrip() + "\n" + log_line.strip()
+            else:
+                new_content = log_line
+
+            blob.upload_from_string(
+                new_content,
+                content_type="text/plain; charset=utf-8"
+            )
+            logger.debug(f"Appended to GCS: {blob_name}")
+        except Exception as e:
+            logger.error(f"GCS log append failed ({blob_name}): {e}")
+
+    else:
+        # ── Local filesystem ──────────────────────────────────────────
+        log_path = get_log_path_or_blob()
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(log_line)
+            logger.debug(f"Appended to local: {log_path}")
+        except Exception as e:
+            logger.error(f"Local log write failed ({log_path}): {e}")
+
+
+def get_recent_log_content(lines: int = 30) -> str:
+    """Read last N lines from today's log file (for sidebar preview)"""
+    date_str = get_today_log_identifier()
+    if IS_CLOUD:
+        blob_name = f"{LOG_PREFIX}_{date_str}.txt"
+        try:
+            blob = bucket.blob(blob_name)
+            if not blob.exists():
+                return f"(No log for today {date_str} yet)"
+            content = blob.download_as_text(encoding="utf-8")
+            all_lines = content.strip().split("\n")
+            recent = all_lines[-lines:] if len(all_lines) >= lines else all_lines
+            return "\n".join(recent) if recent else "(empty)"
+        except Exception as e:
+            return f"Cannot read GCS log: {str(e)}"
+    else:
+        log_path = LOG_DIR / f"{LOG_BASE_NAME}_{date_str}.txt"
+        if not log_path.exists():
+            return f"(No log file for {date_str} yet)"
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            all_lines = content.strip().split("\n")
+            recent = all_lines[-lines:] if len(all_lines) >= lines else all_lines
+            return "\n".join(recent) if recent else "(empty)"
+        except Exception as e:
+            return f"Cannot read log file: {str(e)}"
+
+    # Visitor access
+
+
+def get_audit_actor_info() -> str:
+    parts = []
+
+    if is_logged_in():
+        parts.append(f"user={st.session_state.get('email', 'unknown')}")
+        parts.append(f"name=\"{st.session_state.get('name', 'Unknown')}\"")
+    else:
+        parts.append("user=anonymous")
+
+    parts.append(f"device={st.session_state.get('device_type', 'unknown')}")
+    parts.append(f"journey={st.session_state.selected_json_file}")
+    parts.append("location=Portland, Oregon, US")  # from your provided info
+
+    return " | ".join(parts)
+
+# === DETECT IF RUNNING ON STREAMLIT CLOUD ===
+IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
+IS_CLOUD = IS_HF                     # treat HF as cloud backend
+
+# ───────────────────────────────────────────────────────────────
+# Log configuration
+# ───────────────────────────────────────────────────────────────
+
+LOG_DIR_NAME = "logs"
+LOG_BASE_NAME = "jj7_log"
+
+if IS_CLOUD:
+    LOG_PREFIX = f"{LOG_DIR_NAME}/{LOG_BASE_NAME}"
+    logger.info(f"Logging target: GCS → {LOG_PREFIX}_YYYY-MM-DD.txt")
+else:
+    LOG_DIR = BASE_DIR / LOG_DIR_NAME
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Logging target: local → {LOG_DIR}/{LOG_BASE_NAME}_YYYY-MM-DD.txt")
+
+# Throttling settings
+MIN_SECONDS_BETWEEN_SAME_MESSAGE = 30      # same message type won't log more often than this
+_last_log_times = {}                        # message_type → last timestamp
+
+
+try:
+    repo_root = Path(__file__).resolve().parents[1]
+    config_path = repo_root / ".streamlit" / "config.toml"
+
+    config = toml.load(config_path)
+    xsrf = config.get("server", {}).get("enableXsrfProtection", "not set")
+    st.sidebar.info(f"XSRF protection status: {xsrf}")
+
+except Exception as e:
+    st.sidebar.warning(f"Could not read config.toml: {e}")
+
+def init_gcs_bucket_from_env():
+    sa_json = os.getenv("GCP_SA_JSON")
+    bucket_name = os.getenv("GCS_BUCKET_NAME")
+
+    if not sa_json:
+        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
+    if not bucket_name:
+        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+
+    sa_info = json.loads(sa_json)
+    creds = service_account.Credentials.from_service_account_info(sa_info)
+    client = storage.Client(credentials=creds, project=sa_info["project_id"])
+    return client.bucket(bucket_name)
+
+if IS_CLOUD:
+    sa_json = os.getenv("GCP_SA_JSON")
+    bucket_name = os.getenv("GCS_BUCKET_NAME")
+
+    if not sa_json:
+        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
+    if not bucket_name:
+        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+
+    sa_info = json.loads(sa_json)
+    creds = service_account.Credentials.from_service_account_info(sa_info)
+    storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
+    bucket = storage_client.bucket(bucket_name)
+    st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
+    bucket = init_gcs_bucket_from_env()
+else:
+    st.sidebar.info("🖥️ Running locally (filesystem)")
+    UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
+    UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
+    UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
+    UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+
+class init_user:
+    is_logged_in = False
+    name = "init_user"
+    email = "init_user_email"
+    sub = "init_user_sub"
+
+st.user = init_user()
+# ──────────────────────────────────────────────────────────────
+#          TEMP BYPASS – Google login is broken right now
+# ──────────────────────────────────────────────────────────────
+
+# Force login for everyone (temporary dev workaround)
+if False:  # ← change to False when you fix real auth
+    if "bypass_auth" not in st.session_state:
+        st.session_state.bypass_auth = True
+        st.session_state.user_info = {
+            "name": "Test User 🔥",
+            "email": "test@example.com",
+            "sub": "bypass-20260119",
+        }
+
+    class FakeUser:
+        is_logged_in = True
+        name = st.session_state.user_info["name"]
+        email = st.session_state.user_info["email"]
+        sub = st.session_state.user_info["sub"]
+
+    st.user = FakeUser()
+
+    # Show warning banner so you don't forget
+    #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
+
+else:
+    pass
+
+# ==================== DEVICE DETECTION ====================
+if "device_type" not in st.session_state:
+    detect_js = """
+    <script>
+        function detectDevice() { const width = window.innerWidth; const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0; const ua = navigator.userAgent.toLowerCase(); const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+
+            if (width <= 768 && (hasTouch || isMobileUA)) {
+                return "mobile";
+            } else if (width <= 1024) {
+                return "tablet";
+            } else {
+                return "desktop";
+            }
+        }
+
+        const device = detectDevice();
+
+        if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: device
+            }, '*');
+        }
+    </script>
+    """
+
+    returned_value = components.html(detect_js, height=0, width=0)
+    st.session_state.device_type = returned_value or "desktop"
+
+# Then set the initial sidebar based on device
+initial_sidebar = "collapsed" if st.session_state.device_type == "mobile" else "expanded"
+
+# ==================== JSON FILE PATH WITH ARGUMENT SUPPORT ====================
+# parser = argparse.ArgumentParser(description="My Life Journey App")
+# parser.add_argument(
+#    "--file",
+#    type=str,
+#    default=DEFAULT_ACTIVE_JSON,
+#    help=f"Path to the life events JSON file (default: {DEFAULT_ACTIVE_JSON})"
+# )
+# args = parser.parse_args()
+
+# ── Handle shared journey via URL query param ────────────────────────────────
+if "journey" in st.query_params:
+    requested = st.query_params["journey"][0] if isinstance(st.query_params["journey"], list) else st.query_params[
+        "journey"]
+    # Basic safety: must end with .json and no dangerous characters
+    if requested.endswith(".json") and all(c.isalnum() or c in "-_" for c in requested.replace(".json", "")):
+        # Optional: normalize (you can skip if filenames are already clean)
+        requested = requested.lower().replace(" ", "-") + ".json" if not requested.endswith(".json") else requested
+
+        # Check if this journey actually exists in GCS / local
+        blob_name = get_json_path(requested) if IS_CLOUD else str(BASE_DIR / requested)
+        try:
+            # Try a quick existence check (lightweight)
+            if IS_CLOUD:
+                bucket.blob(blob_name).exists()
+            else:
+                Path(blob_name).exists()
+
+            st.session_state.selected_json_file = requested
+            #st.session_state.app_mode = "View Mode"  # force read-only for shared links
+            st.toast(f"Opened shared journey: {requested.replace('.json', '').replace('-', ' ').title()}", icon="🔗")
+        except:
+            st.warning(f"Journey '{requested}' not found or inaccessible.")
+    else:
+        st.warning("Invalid journey link.")
+
+# st.sidebar.caption(f"📄 Using data file: `{JSON_FILE.name}`") # todo
+#if "selected_json_file" not in st.session_state:
+#    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
+
+JSON_BLOB_NAME = get_json_path(st.session_state.selected_json_file) if IS_CLOUD else str(BASE_DIR / st.session_state.selected_json_file)
+JSON_FILE = BASE_DIR / st.session_state.selected_json_file
+
+# === AUTO-CREATE FIRST JOURNEY IF NONE EXIST ===
+available_journeys = get_local_json_files()
+
+if not available_journeys:
+    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
+    st.session_state.selected_json_file = default_filename
+
+    # Recompute paths with the new selected file
+    #global JSON_BLOB_NAME, JSON_FILE
+    JSON_BLOB_NAME = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
+    JSON_FILE = BASE_DIR / default_filename
+
+    default_data = {
+        "autobiography": {
+            "title": "Your First Journey",
+            "author": "Your Name",
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "last_updated": datetime.now().strftime("%Y-%m-%d")
+        },
+        "events": []
+    }
+
+    # Now safe to save — all paths are defined
+    save_data_to_storage(default_data)
+    logger.info(f"🌟 Created default journey: {default_filename}")
+
+    # Reload data into session state
+    st.session_state.data = default_data
+    data = default_data
+
+    # Refresh list
+    available_journeys = get_local_json_files()
+else:
+    # Normal case: journeys exist
+    pass
+
+# Right after st.session_state.selected_json_file = json_name
+st.session_state.current_journey_locked = is_journey_locked(st.session_state.selected_json_file)
+
+local_json_files = available_journeys
+
+# ==================== DYNAMIC TITLE BASED ON JSON FILENAME ====================
+# Get filename without extension and path
+json_filename = st.session_state.selected_json_file # e.g., "life_events", "my_family_memories", "john_2025"
+
+###### TODO Clean up common patterns for nicer display
+display_name = json_filename.replace("_", " ").replace("-", " ")
+# Capitalize each word
+display_name = " ".join(word.capitalize() for word in display_name.split())
+
+# Fallback if somehow empty
+if not display_name.strip():
+    display_name = "My Journey"
+
+# Get available journeys (local or cloud)
+available_journeys = get_local_json_files()
+local_json_files   = available_journeys
+
+# If NO journeys exist at all → create the default one
+if not available_journeys:
+    default_filename = DEFAULT_ACTIVE_JSON  # "YourFirstJourney.json"
+    default_path_or_blob = get_json_path(default_filename) if IS_CLOUD else str(BASE_DIR / default_filename)
+
+    # Only create if it really doesn't exist (safety)
+    exists = default_filename in available_journeys
+    if not exists:
+        default_data = {
+            "autobiography": {
+                "title": "Your First Journey",
+                "author": "Your Name",
+                "created_date": datetime.now().strftime("%Y-%m-%d"),
+                "last_updated": datetime.now().strftime("%Y-%m-%d")
+            },
+            "events": []
+        }
+        save_data_to_storage(default_data)  # This uses upload_to_gcs or local write correctly
+        logger.info(f"Created default journey: {default_filename}")
+
+        # Ensure it's selected
+        st.session_state.selected_json_file = default_filename
+
+    available_journeys = get_local_json_files()  # Refresh list
+
+#local_json_files = get_local_json_files()
+local_json_files = available_journeys
+
+if "data" not in st.session_state:
+    #st.session_state.data = load_data_from_file(JSON_FILE)
+    st.session_state.data = load_data_from_file(JSON_BLOB_NAME)
+
+ensure_valid_json()
+
+data = st.session_state.data
+
+local_json_files = get_local_json_files()
+
+# Calculate timeline year range (only if there are events)
+timeline_info = ""
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+    if dates:
+        start_year = min(dates).year
+        end_year = max(dates).year
+        timeline_info = f" ({start_year} – {end_year})"
+        timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
+            "events"] else ""
+
+# ==================== DYNAMIC TITLE WITH FILENAME AND MEMORY COUNT ====================
+json_filename = JSON_FILE.name
+if st.session_state.selected_json_file:
+    json_filename = st.session_state.selected_json_file
+
+display_name = json_filename.replace(".json", "").replace("_", " ").replace("-", " ")
+display_name = " ".join(word.capitalize() for word in display_name.split())
+
+memory_count = len(st.session_state.data.get("events", []))
+
+if data["events"]:
+    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+    start_year = min(dates).year
+    end_year = max(dates).year
+    timeline_info = f" ({start_year}–{end_year})"
+    timeline_info = f" ({start_year})" if start_year == end_year else f" ({start_year}–{end_year})" if data[
+        "events"] else ""
+else:
+    timeline_info = ""
+
+event_count = len(st.session_state.data.get("events", []))
+place_text = "memory" if event_count == 1 else "memories"
+memory_count_str = f"{event_count} {place_text}" if event_count > 0 else "no memory  yet"
+
+full_title = f"🌍 Journey ({display_name}) – {memory_count_str}{timeline_info}"
+
+st.set_page_config(
+   page_title=full_title,
+   layout="wide",
+   initial_sidebar_state=initial_sidebar
+)
+
 
 # ==================== RESPONSIVE CSS BASED ON DETECTED DEVICE ====================
 device = st.session_state.device_type
@@ -1490,15 +1570,8 @@ css += """
 </style>
 """
 st.markdown(css, unsafe_allow_html=True)
-# st.set_page_config(
-#     page_title=f"{display_name} - Map {timeline_info}",
-#     layout="wide",
-#     initial_sidebar_state=initial_sidebar   # ← Use the variable here
-# )
-#
 
 # ── Edit controls — only shown/enabled when logged in ────────────────────
-#if st.session_state.auth["is_logged_in"]:
 if is_logged_in():
     #st.markdown("---")
     #st.subheader("Edit Controls")
@@ -1524,9 +1597,7 @@ else:
     #st.markdown('👤 [**Sign in with Google to edit**](#login-section)', unsafe_allow_html=True)
 
 #========================== Login Session ===========================
-
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
-
 # ==================== CENTER ON MARKER CONTROL ====================
 if data["events"]:
     sorted_events = sorted(data["events"], key=lambda x: x["date"])
@@ -1626,8 +1697,6 @@ if data["events"]:
     #             else:
     #                 st.error("Invalid marker ID")
 
-#st.title(full_title)
-
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
     sorted_events = sorted(data["events"], key=lambda x: x["date"])
@@ -1688,12 +1757,6 @@ else:
 center = st.session_state.map_center if st.session_state.map_center != [20, 0] else None
 zoom = st.session_state.map_zoom if st.session_state.map_zoom != 2 else None
 
-#st.session_state.map_center = [20, 0]
-#st.session_state.map_zoom = 12
-#st.write("DEBUG: af create_map Current map_center in session_state =", st.session_state.get("map_center"))
-#st.write("DEBUG: af create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
-#st.write("DEBUG: af create_map force_map_refresh counter =", st.session_state.force_map_refresh)
-
 # ==================== MAP ====================
 map_key = f"main_map_{st.session_state.force_map_refresh}"
 main_map = create_map()
@@ -1746,11 +1809,6 @@ map_data = st_folium(
 
 click = map_data["last_clicked"]
 
-if "lat_edit" not in st.session_state:
-    st.session_state.edit_lat = None
-
-if "lon_edit" not in st.session_state:
-    st.session_state.edit_lon = None
 
 if map_data is not None and map_data.get("last_clicked"):
     new_lat = round(click["lat"], 6)
@@ -1760,13 +1818,8 @@ if map_data is not None and map_data.get("last_clicked"):
     st.session_state.edit_lat = new_lat
     st.session_state.edit_lon = new_lon
 
-
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
 
-
-# Now check click + mode
-if "app_mode" not in st.session_state:
-    st.session_state.app_mode = "View Mode"  # Default
 
 #if st.session_state.auth.get("is_logged_in") and map_data and map_data.get("last_clicked"):
 if is_logged_in() and map_data and map_data.get("last_clicked"):
@@ -1783,7 +1836,6 @@ if map_data and map_data.get("center"):
     st.session_state.map_zoom = map_data.get("zoom", 2)
 
 # ==================== ADD NEW MEMORY ====================
-# Safety: only allow one mode at a time
 if st.session_state.editing_event_id and st.session_state.add_new_memory:
     st.session_state.add_new_memory = False  # editing takes priority
 # todo
@@ -1879,14 +1931,7 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
             st.success("Adding Memory cancelled!")
             st.rerun()  # Clears the form by removing last_clicked state
 
-# ============================================================================
-#  Login / Logout area — placed where you want the jump target
-#  (here: below the map, or move it back to sidebar if preferred)
-# ============================================================================
-
 st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
-# Anchor target is already defined above: id="login-area"
-#if not st.session_state.auth.get("is_logged_in", False):
 if not is_logged_in():
     with st.container():
 
@@ -1938,6 +1983,31 @@ else:
             st.session_state.email = claims.get("email")
             st.session_state.name = claims.get("name")
 
+            if "visitor_logged_this_session" not in st.session_state:
+                visitor_msg = (
+                    f"Visitor access | "
+                    f"location: Portland, Oregon, US | "
+                    f"device: {st.session_state.get('device_type', 'unknown')} | "
+                    f"journey: {st.session_state.selected_json_file}"
+                )
+                append_to_log(visitor_msg, message_type="visitor_access", throttle=True)
+                st.session_state.visitor_logged_this_session = True
+
+                # ── After successful login ───────────────────────────────────────
+            if "user_login_logged_this_session" not in st.session_state:
+                user_msg = (
+                    f"User login | "
+                    f"Name: {st.session_state.get('name', 'Unknown')} | "
+                    f"Email: {st.session_state.get('email', 'unknown')} | "
+                    f"location: Portland, Oregon, US | "
+                    f"device: {st.session_state.get('device_type', 'unknown')} | "
+                    f"journey: {st.session_state.selected_json_file}"
+                )
+                append_to_log(user_msg, message_type=f"user_login_{st.session_state.get('email', 'unknown')}",
+                              throttle=True)
+                st.session_state.user_login_logged_this_session = True
+
+
         except Exception as e:
             st.warning(f"Couldn't decode id_token: {e}")
     else:
@@ -1954,9 +2024,10 @@ else:
     if st.button("Sign out", type="secondary", use_container_width=True):
         st.session_state.auth = {"token": None, "user_info": None, "is_logged_in": False}
         st.session_state.current_journey_locked = True
+        log_msg = f"User logout | Name: {st.session_state.get('name', 'Unknown')} | Email: {st.session_state.get('email', 'unknown')}"
+        append_to_log(log_msg, message_type="user_logout", throttle=False)  # no throttle on logout
         st.rerun()
 
-#st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
 logger.info(f" locked {st.session_state.current_journey_locked}")
@@ -2030,6 +2101,9 @@ if not st.session_state.current_journey_locked:
                                         del st.session_state[k]
 
                                 st.success(f"✅ Created and switched to: **{new_journey_name}** (0 places)")
+                                log_msg = f"Create Journey•| {get_audit_actor_info()}"
+                                append_to_log(log_msg, message_type="user_login",
+                                              throttle=False)  # no throttle on logout
                                 st.rerun()
 
                             except Exception as e:
@@ -2136,6 +2210,8 @@ if not st.session_state.current_journey_locked:
 
                     st.cache_data.clear()
                     st.session_state.pop("data", None)
+                    log_msg = f"Rename Journey• | {get_audit_actor_info()}"
+                    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                     st.rerun()
 
                 except Exception as e:
@@ -2193,6 +2269,10 @@ with st.sidebar.expander("📥 Download Journey", expanded=False):
                 use_container_width=True,
                 key=f"download_backup_{journey_to_download}"
             )
+
+            #if st.download_button(): # TODO
+            #    log_msg = f"Download Journey• event=new_042 • title=\"Birthday 2026\" | {get_audit_actor_info()}"
+            #    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
 
         except Exception as e:
             st.error("Could not load journey data for download.")
@@ -2257,6 +2337,9 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
                         with col1:
                             if st.button("✅ Yes, Restore Now", type="primary", use_container_width=True):
                                 try:
+                                    log_msg = f"Upload Journey• | {get_audit_actor_info()}"
+                                    append_to_log(log_msg, message_type="user_login",
+                                                  throttle=False)  # no throttle on logout
                                     blob_name = get_json_path(restore_filename)
 
                                     if IS_CLOUD:
@@ -2291,11 +2374,18 @@ with st.sidebar.expander("📤 Upload Journey", expanded=False):
             except Exception as e:
                 st.error(f"Error reading file: {e}")
 
+def log_kml_download():
+    log_msg = f"Download Package (JSON + Media)• | {get_audit_actor_info()}"
+    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
+    st.session_state.kml_just_downloaded = True
+
+if "kml_just_downloaded" not in st.session_state:
+    st.session_state.kml_just_downloaded = False
 
 # ==================== DOWNLOAD JOURNEY AS KML (SELECT ANY JOURNEY) ====================
 with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
-    st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
-    available_journeys = get_local_json_files()
+    #st.write("Select any journey and download it as a KML file for Google My Maps or Google Earth.")
+    #available_journeys = get_local_json_files()
     logger.info(f"About to export — passing {len(temp_data['events'])} events")
     # kml_bytes = export_to_kml_bytes(temp_data["events"])
     if not available_journeys:
@@ -2335,6 +2425,8 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
                 if event_count == 0:
                     st.info("This journey has no memories yet — KML will be empty.")
                 else:
+                    #log_msg = f"Export to Google Map/Earch• event=new_042 • title=\"Birthday 2026\" | {get_audit_actor_info()}"
+                    #append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                     # Generate filename based on **selected** journey
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
                     base_name = journey_to_kml.replace(".json", "")
@@ -2362,9 +2454,12 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
                             file_name=kml_filename,  # ← now uses selected journey name
                             mime="application/vnd.google-earth.kml+xml",
                             use_container_width=True,
-                            key=f"download_kml_{journey_to_kml}_{timestamp}"  # unique per selection + time
+                            key=f"download_kml_{journey_to_kml}_{timestamp}",  # unique per selection + time
+                            on_click=log_kml_download
                         )
-
+                        if st.session_state.kml_just_downloaded: # TODO
+                            log_msg = f"Export to KML | {get_audit_actor_info()}"
+                            append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                     st.markdown("""
                     **How to open:**
                     1. Go to https://www.google.com/mymaps
@@ -2376,9 +2471,6 @@ with st.sidebar.expander("🌍 Export to Google Map/Earth", expanded=False):
             except Exception as e:
                 st.error(f"Could not load or export {journey_to_kml}: {str(e)}")
                 logger.error(f"KML export error for {journey_to_kml}: {e}")
-
-
-
 
 # ==================== DOWNLOAD JSON's MEDIA FILES ) ====================
 
@@ -2412,10 +2504,13 @@ with st.sidebar.expander("📦 Download Package (JSON + Media)", expanded=False)
                     use_container_width=True,
                     key=f"download_media_{journey_pkg}_{ts}"
                 )
+                #if st.download_button(): # TODO
+                #    log_msg = f"Download Package (JSON + Media)• event=new_042 • title=\"Birthday 2026\" | {get_audit_actor_info()}"
+                #    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
+
                 st.caption("Includes: journeys/<json>, media/photos/*, media/videos/*, manifest.json")
             except Exception as e:
                 st.error(f"Failed to build package: {e}")
-
 
 with st.sidebar.expander("📦 Upload Package (JSON + Media)", expanded=False):
     if st.session_state.current_journey_locked:
@@ -2446,6 +2541,8 @@ with st.sidebar.expander("📦 Upload Package (JSON + Media)", expanded=False):
                     st.info("This package has already been restored in this session.")
                 else:
                     try:
+                        log_msg = f"Upload Package (JSON + Media)• | {get_audit_actor_info()}"
+                        append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                         zip_bytes = pkg_up.read()
                         restored_name, restored_data = restore_journey_package(zip_bytes)
 
@@ -2538,6 +2635,8 @@ if not st.session_state.current_journey_locked:
                             st.success(f"✅ Journey **{file_to_delete}** deleted permanently.")
 
                         # Refresh journey list
+                        log_msg = f"Delete Journey• | {get_audit_actor_info()}"
+                        append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                         st.rerun()
 
                     except Exception as e:
@@ -2555,6 +2654,8 @@ with st.sidebar.expander("🔍 Search Journey ", expanded=False):
         if st.button("Search (normal)", key="btn_normal"):
             st.session_state.search_mode = "normal"
             st.session_state.search_value = normal_search
+            log_msg = f"Search Journey• | {normal_search} | {get_audit_actor_info()}"
+            append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
             st.rerun()
 
     with tab_regex:
@@ -2562,8 +2663,9 @@ with st.sidebar.expander("🔍 Search Journey ", expanded=False):
         if st.button("Search (regex)", key="btn_regex"):
             st.session_state.search_mode = "regex"
             st.session_state.search_value = regex_pattern
+            log_msg = f"Search Journey• | {regex_pattern} | {get_audit_actor_info()}"
+            append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
             st.rerun()
-
 
 # st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 event_count = len(st.session_state.data.get("events", []))
@@ -2573,15 +2675,9 @@ locked = st.session_state.get("current_journey_locked", False)
 
 lock_emoji = "🔒" if st.session_state.current_journey_locked else "✏️"
 
-#st.sidebar.subheader(f"🗺️ Selected Journey ({st.session_state.selected_json_file}) has {event_count} {place_text}")
-
-# Near the top of sidebar — after showing current journey name & count
 locked = st.session_state.current_journey_locked
 
 # ==================== JOURNEY LOCK / UNLOCK STATUS & CONTROLS ====================
-#st.sidebar.markdown("### Journey Status")
-
-#if st.user.is_logged_in():
 if is_logged_in():
 
     locked = st.session_state.get("current_journey_locked", False)
@@ -2622,6 +2718,8 @@ if is_logged_in():
         #st.sidebar.caption("You can add, edit and delete memories in this journey.")
 
         if st.sidebar.button("🔒 Lock this journey", type="secondary", use_container_width=True):
+            log_msg = f"Lock Journey• | {get_audit_actor_info()}"
+            append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
             try:
                 lock_content = datetime.now().isoformat().encode("utf-8")  # optional timestamp
 
@@ -2648,15 +2746,9 @@ else:
     #st.sidebar.markdown(f"️🗺️ Journey {st.session_state.selected_json_file} has {event_count} {place_text}")
     #st.sidebar.caption("Sign in to edit this journey")
 
-
 ######################## buggy EDITING ######################
-if "edit_lat" not in st.session_state:
-    st.session_state.edit_lat = None
-if "edit_lon" not in st.session_state:
-    st.session_state.edit_lon = None
 
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
-
 
 for idx, event in enumerate(sorted_events, start=1):
     expander_key = f"memory_expander_{event['id']}"
@@ -2732,6 +2824,8 @@ for idx, event in enumerate(sorted_events, start=1):
             with col_delete:
                 if st.button("🗑️ Delete", key=f"delete_{event['id']}"):
                     st.session_state.confirm_delete_id = event["id"]
+                    log_msg = f"Delete Memory• | {get_audit_actor_info()}"
+                    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                     st.rerun()
 
         # ── Edit form appears RIGHT HERE — under the buttons ──
@@ -2871,14 +2965,14 @@ for idx, event in enumerate(sorted_events, start=1):
                     st.session_state.pop("edit_lat" , None)
                     st.session_state.pop("edit_lon" , None)
                     st.success("Memory updated!")
+                    log_msg = f"Update Memory• | {get_audit_actor_info()}"
+                    append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
                     st.rerun()
 
                 if cancel_clicked:
                     st.session_state.editing_event_id = None
                     st.rerun()
 
-
-# Confirmation dialog for deletion
 if "confirm_delete_id" in st.session_state:
     delete_event = next((e for e in st.session_state.data["events"] if e["id"] == st.session_state.confirm_delete_id),
                         None)
@@ -2928,24 +3022,11 @@ if "confirm_delete_id" in st.session_state:
                             st.rerun()
                 break
 
-
 # Optional: last modified
 #if JSON_FILE.exists():
 #    mtime = datetime.fromtimestamp(JSON_FILE.stat().st_mtime)
 #    st.sidebar.caption(f"Last saved: {mtime.strftime('%Y-%m-%d %H:%M')}")
 
-
-## ==================== AVAILABLE JOURNEY FILES AS CLICKABLE BUTTONS ====================
-# SAFETY CHECK: Ensure selected_json_file always exists in session state
-if "selected_json_file" not in st.session_state:
-    st.session_state.selected_json_file = DEFAULT_ACTIVE_JSON
-
-# Optional: Support --file argument to pre-select a different journey on launch
-#if args.file and (BASE_DIR / args.file).exists():
-#    st.session_state.selected_json_file = args.file
-
-# Refresh the list of available JSON files
-# local_json_files = get_local_json_files()
 
 # ==================== MY JOURNEYS (ROBUST PREVIEW) ====================
 st.sidebar.subheader("📍 My Journeys")
