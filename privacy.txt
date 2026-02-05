@@ -1,0 +1,30 @@
+Privacy Policy for Journey-Journal app
+Effective Date: February 2026
+
+This is a prototype/toy/experimental application built by Yong W. for learning and testing purposes only. It is not a commercial product.
+
+1. Information We Collect
+When you use "Sign in with Google", we receive your Google email address, name, and profile picture (if available) from Google.
+
+2. How We Use Your Information
+We use this data only to:
+- Authenticate your login
+- Display your name in the app (if applicable)
+
+We do not store your data long-term, sell it, or use it for any other purpose.
+
+3. Sharing and Disclosure
+We do not share your data with third parties.
+
+Journey-Journal's use and transfer of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements.
+
+4. Security
+We take reasonable steps to protect the information we handle.
+
+5. Your Rights
+Contact us at ywangperl@gmail.com to request deletion of any associated data.
+
+6. Changes
+We may update this policy. Check back for changes.
+
+Contact: ywangperl@gmail.com
