@@ -45,7 +45,17 @@ PHOTOS_FOLDER = "photos"
 VIDEOS_FOLDER = "videos"
 MIN_DATE = date(1800, 1, 1)              # ← you can lower to 1850 or 1800 if needed
 MAX_DATE = date(2026,12,30)
+# ───────────────────────────────────────────────
+#  Configuration for adding thrumnail
+# ───────────────────────────────────────────────
+THUMB_WIDTH = 360
+VIDEO_THUMB_DURATION = 3          # seconds for video preview clip
+THUMB_SUFFIX_PHOTO = "_thumb.jpg"
+THUMB_SUFFIX_VIDEO = "_thumb.mp4"
 
+# GCS settings - only used when IS_CLOUD is True
+GCS_BUCKET_PREFIX = "https://storage.googleapis.com/journey-journal/"
+# Assume 'bucket' is already initialized globally when IS_CLOUD=True
 
 st.session_state.latitude = 1.11
 st.session_state.longitude = 1.11
@@ -466,9 +476,6 @@ def export_to_kml_bytes(events) -> bytes:
             lat_raw = loc.get("latitude")
             lon_raw = loc.get("longitude")
 
-            logger.info(f"  latitude raw  : {lat_raw!r} (type: {type(lat_raw).__name__})")
-            logger.info(f"  longitude raw : {lon_raw!r} (type: {type(lon_raw).__name__})")
-
             if lat_raw is None or lon_raw is None:
                 logger.info(f"  → SKIPPED: missing lat or lon")
                 skipped_count += 1
@@ -795,28 +802,116 @@ def build_popup_html(event):
     photos = event["media"].get("photos", [])
     videos = event["media"].get("videos", [])
 
-    # Add this (working base64 logic - also ensure get_image_base64 and get_video_base64 are present/unchanged):
+    # # Add this (working base64 logic - also ensure get_image_base64 and get_video_base64 are present/unchanged):
+    # if photos:
+    #     popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
+    #     for p in photos:
+    #         b64 = get_image_base64(p)
+    #         fn = os.path.basename(p)
+    #         if b64:
+    #             dl = f"data:image/jpeg;base64,{b64}"
+    #             popup += f"""
+    #             <div style="text-align:center;">
+    #                 <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
+    #                      onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
+    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+    #             </div>
+    #             """
+    #     popup += "</div>"
+    #
+    # if videos:
+    #     popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
+    #     for v in videos:
+    #         b64 = get_video_base64(v)
+    #         fn = os.path.basename(v)
+    #         if b64:
+    #             dl = f"data:video/mp4;base64,{b64}"
+    #             popup += f"""
+    #             <div style="text-align:center;">
+    #                 <video controls style="max-width:100%;border-radius:8px;">
+    #                     <source src="{dl}" type="video/mp4">
+    #                 </video>
+    #                 <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+    #             </div>
+    #             """
+    #     popup += "</div>"
+
+    # ── Photos ──────────────────────────────────────────────────────────────
     if photos:
-        popup += "<strong>Photos:</strong><div style='display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;'>"
+        popup += """
+            <h4 style="margin:20px 0 10px; color:#065f46; font-size:1.1em;">🖼️ Photos</h4>
+            <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">
+            """
+
         for p in photos:
-            b64 = get_image_base64(p)
+            if IS_CLOUD:
+                # Cloud: use public URL
+                thumb_url = get_thumbnail_gcs_path(p)
+                src = make_public_url(thumb_url) if thumb_url and thumbnail_exists_in_gcs(
+                    thumb_url) else make_public_url(p)
+                full_url = make_public_url(p)
+            else:
+                # Local: base64 thumbnail (prefer thumb, fallback original if small)
+                thumb_path = Path(p).with_name(Path(p).stem + THUMB_SUFFIX_PHOTO)
+                src = ""
+                if thumb_path.is_file():
+                    try:
+                        with open(thumb_path, "rb") as f:
+                            b64 = base64.b64encode(f.read()).decode('utf-8')
+                        src = f"data:image/jpeg;base64,{b64}"
+                    except:
+                        pass
+
+                # fallback to original if thumb missing and original small
+                if not src:
+                    lp = resolve_local_path(p)
+                    if lp.exists() and lp.stat().st_size < 250 * 1024:  # <250KB
+                        try:
+                            with open(lp, "rb") as f:
+                                b64 = base64.b64encode(f.read()).decode('utf-8')
+                            src = f"data:image/jpeg;base64,{b64}"
+                        except:
+                            pass
+
+                full_url = str(lp.absolute()) if 'lp' in locals() and lp.exists() else ""
             fn = os.path.basename(p)
-            if b64:
-                dl = f"data:image/jpeg;base64,{b64}"
+            if src:
+                # popup += f"""
+                #     <a href="{full_url}" target="_blank" style="display:block; text-decoration:none;">
+                #         <img src="{src}"
+                #              style="width:120px; height:120px; object-fit:cover; border-radius:6px;
+                #                     box-shadow:0 2px 6px rgba(0,0,0,0.12); transition:transform 0.15s;"
+                #              onmouseover="this.style.transform='scale(1.04)'"
+                #              onmouseout="this.style.transform='scale(1)'"
+                #              title="Click to view full size">
+                #     <br><small><a href="{src}" download="{fn}">📥 Download</a></small>
+                #     </a>
                 popup += f"""
-                <div style="text-align:center;">
-                    <img src="{dl}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
+                    <div style="text-align:center;">
+                    <img src="{src}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;cursor:pointer;"
                          onclick="this.style.width='100%';this.style.height='auto';this.onclick=null;">
-                    <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-                </div>
-                """
+                    <br><small><a href="{src}" download="{fn}">📥 Download</a></small>
+                    </div>
+                    """
+            else:
+                popup += """
+                    <div style="width:120px; height:120px; background:#f3f4f6; border-radius:6px; 
+                                display:flex; align-items:center; justify-content:center; color:#9ca3af;">
+                        No preview
+                    </div>
+                    """
+
         popup += "</div>"
 
+    # ── Videos ──────────────────────────────────────────────────────────────
     if videos:
         popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
         for v in videos:
-            b64 = get_video_base64(v)
-            fn = os.path.basename(v)
+            thumb_path = Path(v).with_name(Path(v).stem + THUMB_SUFFIX_VIDEO)
+            #tp = resolve_local_path(thumb_path)
+            #logger.info(f" popup tp ----------------------- {tp} - {thumb_path} v = {v}")
+            b64 = get_video_base64(thumb_path)
+            fn = os.path.basename(thumb_path)
             if b64:
                 dl = f"data:video/mp4;base64,{b64}"
                 popup += f"""
@@ -829,6 +924,47 @@ def build_popup_html(event):
                 """
         popup += "</div>"
 
+
+    # if videos:
+    #     popup += """
+    #         <h4 style="margin:28px 0 12px; color:#7c2d12; font-size:1.1em;">🎬 Videos (short preview)</h4>
+    #         <div style="display:flex; flex-direction:column; gap:16px;">
+    #         """
+    #
+    #     for v in videos:
+    #         if IS_CLOUD: # TODO
+    #             # Cloud: use public URL
+    #             thumb_url = get_thumbnail_gcs_path(v)
+    #             src = make_public_url(thumb_url) if thumb_url and thumbnail_exists_in_gcs(
+    #                 thumb_url) else make_public_url(v)
+    #             full_url = make_public_url(v)
+    #         else:
+    #             #popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
+    #             #for v in videos:
+    #             thumb_path = Path(v).with_name(Path(v).stem + THUMB_SUFFIX_VIDEO)
+    #             tp = resolve_local_path(thumb_path)
+    #             logger.info(f" ----------------------- > popup local video {thumb_path} - {tp}")
+    #             b64 = get_video_base64(tp)
+    #             fn = os.path.basename(tp)
+    #             if b64:
+    #                 dl = f"data:video/mp4;base64,{b64}"
+    #                 popup += f"""
+    #                 <div style="text-align:center;">
+    #                     <video controls style="max-width:100%;border-radius:8px;">
+    #                         <source src="{dl}" type="video/mp4">
+    #                     </video>
+    #                     <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+    #                 </div>
+    #                 """
+        #popup += "</div>"
+
+        popup += """
+            <div style="text-align:center; color:#6b7280; padding:12px; background:#f9fafb; border-radius:6px;">
+                If video preview not ready, Journey Maintenance -> Refresh Thumbnails.
+            </div>
+            """
+
+        popup += "</div>"
     # === FALLBACK MESSAGES ===
     if not photos and not videos:
         popup += "<p style='text-align:center;color:#888;'><em>No media</em></p>"
@@ -908,16 +1044,22 @@ def create_map():
                     </div>
                 </div>
                 """
+        # folium.Marker(
+        #     [e["location"]["latitude"], e["location"]["longitude"]],
+        #     popup=folium.Popup(build_popup_html(e), max_width=450),
+        #     #tooltip=f"{idx}. {e['title']} ({e['date']})",
+        #     #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
+        #     #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
+        #     tooltip=folium.Tooltip(tooltip_html, perment=False, sticky=True),
+        #     icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
+        # ).add_to(cluster)
+        #
         folium.Marker(
             [e["location"]["latitude"], e["location"]["longitude"]],
             popup=folium.Popup(build_popup_html(e), max_width=450),
-            #tooltip=f"{idx}. {e['title']} ({e['date']})",
-            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
-            #tooltip=f"{idx}. <b>{e['date']} {e['title']}</b> {e['description']}",
             tooltip=folium.Tooltip(tooltip_html, perment=False, sticky=True),
             icon=folium.Icon(color=get_color_by_year(e["date"]), icon="circle", prefix="fa")
         ).add_to(cluster)
-
         # Number label above marker
         label_html = f"""
         <div style="
@@ -2667,6 +2809,216 @@ with st.sidebar.expander("🔍 Search Journey ", expanded=False):
             append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
             st.rerun()
 
+############## Thrumnail ###############
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+import logging
+import streamlit as st
+
+logger = logging.getLogger(__name__)
+
+
+
+
+def get_thumbnail_gcs_path(original_path: str) -> str | None:
+    """Only meaningful in cloud mode - returns gs:// path for thumbnail"""
+    if not IS_CLOUD:
+        return None
+
+    if not original_path.startswith("gs://"):
+        # Try best-effort conversion for legacy local-style paths
+        if "photos/" in original_path or "videos/" in original_path:
+            clean = original_path.split("/", 1)[-1] if "/" in original_path else original_path
+            original_path = f"gs://journey-journal/{clean}"
+        else:
+            logger.warning(f"Cannot convert to GCS path: {original_path}")
+            return None
+
+    p = Path(original_path.replace("gs://", ""))
+    folder = p.parent
+    stem = p.stem
+    suffix = THUMB_SUFFIX_VIDEO if p.suffix.lower() in {".mp4", ".mov"} else THUMB_SUFFIX_PHOTO
+
+    thumb_blob = folder / f"{stem}{suffix}"
+    return f"gs://{p.parts[0]}/{thumb_blob}"
+
+
+def thumbnail_exists(original_path: str) -> bool:
+    """Check if thumbnail already exists (local or GCS)"""
+    if IS_CLOUD:
+        gcs_thumb = get_thumbnail_gcs_path(original_path)
+        if not gcs_thumb:
+            return False
+        blob_name = gcs_thumb.replace("gs://journey-journal/", "")
+        return bucket.blob(blob_name).exists()
+    else:
+        # Local mode
+        local_thumb = Path(original_path).with_name(Path(original_path).stem +
+                      (THUMB_SUFFIX_VIDEO if ".mp4" in original_path.lower() or ".mov" in original_path.lower()
+                       else THUMB_SUFFIX_PHOTO))
+        return local_thumb.is_file()
+
+
+def generate_thumbnail(media_path: str, force: bool = False) -> str | None:
+    """
+    Generate thumbnail:
+      - photo → JPEG
+      - video → short MP4 clip
+    Returns public URL (GCS) or local path string
+    """
+    if force or not thumbnail_exists(media_path):
+        pass
+    else:
+        # Already exists → return existing public/local path
+        if IS_CLOUD:
+            return make_public_url(get_thumbnail_gcs_path(media_path))
+        else:
+            p = Path(media_path)
+            suffix = THUMB_SUFFIX_VIDEO if p.suffix.lower() in {".mp4", ".mov"} else THUMB_SUFFIX_PHOTO
+            return str(p.with_name(p.stem + suffix))
+
+    input_path = None
+    temp_input = None
+    temp_output = None
+
+    try:
+        # ── Prepare input file ───────────────────────────────────────
+        if IS_CLOUD and media_path.startswith("gs://"):
+            blob_name = media_path.replace("gs://journey-journal/", "")
+            blob = bucket.blob(blob_name)
+            if not blob.exists():
+                logger.warning(f"Original not found in GCS: {media_path}")
+                return None
+
+            suffix = Path(blob_name).suffix
+            temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            blob.download_to_filename(temp_input.name)
+            input_path = Path(temp_input.name)
+        else:
+            input_path = Path(media_path)
+            if not input_path.is_file():
+                logger.warning(f"File not found: {media_path}")
+                return None
+
+        is_video = input_path.suffix.lower() in {".mp4", ".mov"}
+
+        # ── Temporary output ─────────────────────────────────────────
+        out_suffix = ".mp4" if is_video else ".jpg"
+        temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=out_suffix)
+        temp_output.close()
+        out_path = Path(temp_output.name)
+
+        # ── FFmpeg command ───────────────────────────────────────────
+        if is_video:
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(input_path),
+                "-ss", "1",
+                "-t", str(VIDEO_THUMB_DURATION),
+                "-vf", f"scale={THUMB_WIDTH}:-2",
+                "-c:v", "libx264", "-preset", "fast",
+                "-crf", "24",
+                "-movflags", "+faststart",
+                str(out_path)
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(input_path),
+                "-vframes", "1",
+                "-vf", f"scale={THUMB_WIDTH}:-1",
+                str(out_path)
+            ]
+
+        subprocess.run(cmd, check=True, timeout=25)
+
+        if not out_path.is_file() or out_path.stat().st_size < 1000:
+            logger.warning(f"Generated thumbnail invalid: {out_path}")
+            return None
+
+        # ── Save result ──────────────────────────────────────────────
+        if IS_CLOUD:
+            # Upload to GCS
+            thumb_gcs = get_thumbnail_gcs_path(media_path)
+            if not thumb_gcs:
+                return None
+
+            content_type = "video/mp4" if is_video else "image/jpeg"
+            blob_name = thumb_gcs.replace("gs://journey-journal/", "")
+            blob = bucket.blob(blob_name)
+            blob.upload_from_filename(str(out_path), content_type=content_type)
+
+            public_url = f"{GCS_BUCKET_PREFIX}{blob_name}"
+            logger.info(f"Uploaded thumbnail to GCS: {public_url}")
+            return public_url
+        else:
+            # Local mode - move to same folder as original
+            target = Path(media_path).with_name(Path(media_path).stem +
+                      (THUMB_SUFFIX_VIDEO if is_video else THUMB_SUFFIX_PHOTO))
+            out_path.rename(target)
+            logger.info(f"Saved local thumbnail: {target}")
+            return str(target)
+
+    except Exception as e:
+        logger.error(f"Thumbnail generation failed for {media_path}: {e}")
+        return None
+
+    finally:
+        if temp_input and Path(temp_input.name).exists():
+            Path(temp_input.name).unlink(missing_ok=True)
+        if temp_output and Path(temp_output.name).exists():
+            Path(temp_output.name).unlink(missing_ok=True)
+
+
+def refresh_thumbnails_current_journey(force: bool = False):
+    if "data" not in st.session_state or not st.session_state.data:
+        st.warning("No journey loaded.")
+        return
+
+    events = st.session_state.data.get("events", [])
+    if not events:
+        st.info("No events to process.")
+        return
+
+    created = 0
+    skipped = 0
+    failed = 0
+
+    with st.spinner(f"Refreshing thumbnails ({'GCS' if IS_CLOUD else 'local'})..."):
+        for event in events:
+            media = event.get("media", {})
+            for kind in ["photos", "videos"]:
+                for path in media.get(kind, []):
+                    result = generate_thumbnail(path, force=force)
+                    if result:
+                        created += 1
+                    elif force or not thumbnail_exists(path):
+                        failed += 1
+                    else:
+                        skipped += 1
+
+    summary = f"Thumbnail refresh finished:\n• Created: {created}\n• Skipped: {skipped}\n• Failed: {failed}"
+    st.success(summary)
+    logger.info(summary)
+
+with st.sidebar.expander("🛠️ Journey Maintenance"):
+    st.caption(f"Refresh thumbnails ({'GCS' if IS_CLOUD else 'local'})")
+
+    if st.button("🔄 Refresh Thumbnails", type="primary"):
+        refresh_thumbnails_current_journey(force=False)
+        time.sleep(0.8)
+        st.rerun()
+
+    force = st.checkbox("Force regenerate all", False)
+    if force and st.button("🔄 Force ALL", type="secondary"):
+        refresh_thumbnails_current_journey(force=True)
+        time.sleep(0.8)
+        st.rerun()
+
+############## Thrumnail ###############
+
 # st.sidebar.subheader(f"🗺️ Current Journey ({st.session_state.selected_json_file}) has {len(st.session_state.data['events'])} places")
 event_count = len(st.session_state.data.get("events", []))
 place_text = "memory" if event_count == 1 else "memories"
@@ -2748,6 +3100,90 @@ else:
 
 ######################## buggy EDITING ######################
 
+# sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+#
+# for idx, event in enumerate(sorted_events, start=1):
+#     expander_key = f"memory_expander_{event['id']}"
+#     is_editing_this = (st.session_state.get("editing_event_id") == event["id"])
+#
+#     with st.sidebar.expander(
+#         f"🔹 {idx}. {event['date']} — {event['title']}",
+#         expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
+#     ):
+#         st.caption(f"📍 {event['location']['name']}")
+#
+#         # Small preview of existing media (optional but nice)
+#         if event["media"].get("photos") or event["media"].get("videos"):
+#             cols = st.columns(3)
+#             for i, p in enumerate(event["media"].get("photos", [])[:3]):
+#                 with cols[i % 3]:
+#                     try:
+#                         if isinstance(p, str) and p.startswith("gs://"):
+#                             b = media_bytes_anywhere(p)  # uses gcs_bytes_from_gs_uri()
+#                             if b:
+#                                 st.image(b, width="stretch")
+#                             else:
+#                                 st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+#                         else:
+#                             # local relative path
+#                             lp = resolve_local_path(p)
+#                             if lp.exists():
+#                                 st.image(lp.read_bytes(), width="stretch")
+#                             else:
+#                                 st.caption(f"🖼️ Missing ({os.path.basename(p)})")
+#                     except Exception:
+#                         st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+#             # ---- VIDEO PREVIEW (SIDEBAR) ----
+#             videos = event.get("media", {}).get("videos", [])
+#             if videos:
+#                 st.markdown("**🎬 Videos**")
+#                 for v in videos[:2]:  # limit for performance
+#                     try:
+#                         if isinstance(v, str) and v.startswith("gs://"):
+#                             vb = media_bytes_anywhere(v)
+#                             if vb:
+#                                 st.video(vb)
+#                             else:
+#                                 st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
+#                         else:
+#                             lp = resolve_local_path(v)
+#                             if lp.exists():
+#                                 st.video(lp.read_bytes())
+#                             else:
+#                                 st.caption(f"🎬 Missing ({os.path.basename(v)})")
+#                     except Exception:
+#                         st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
+#             else:
+#                 st.caption("No videos attached.")
+#
+#             # for i, p in enumerate(event["media"].get("photos", [])[:3]):
+#             #     with cols[i % 3]:
+#             #         try:
+#             #             st.image(p, width="stretch")
+#             #         except Exception as e:
+#             #             st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+#             #             # Optional: log for debugging
+#             #             # logger.warning(f"Missing media: {p} → {str(e)}")
+#             #         #st.image(p,width="stretch")
+#
+#         # Edit / Delete buttons — always visible when not editing
+#         if not st.session_state.current_journey_locked and not is_editing_this:
+#             col_edit, col_delete = st.columns([3, 1])
+#             with col_edit:
+#                 if st.button("✏️ Edit", key=f"edit_{event['id']}"):
+#                     st.session_state.editing_event_id = event["id"]
+#                     st.rerun()
+#             with col_delete:
+#                 if st.button("🗑️ Delete", key=f"delete_{event['id']}"):
+#                     st.session_state.confirm_delete_id = event["id"]
+#                     log_msg = f"Delete Memory• | {get_audit_actor_info()}"
+#                     append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
+#                     st.rerun()
+#
+pass
+# ───────────────────────────────────────────────────────────────
+# Sidebar memory list with thumbnail previews
+# ───────────────────────────────────────────────────────────────
 sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
 
 for idx, event in enumerate(sorted_events, start=1):
@@ -2755,64 +3191,98 @@ for idx, event in enumerate(sorted_events, start=1):
     is_editing_this = (st.session_state.get("editing_event_id") == event["id"])
 
     with st.sidebar.expander(
-        f"🔹 {idx}. {event['date']} — {event['title']}",
-        expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
+            f"🔹 {idx}. {event['date']} — {event['title']}",
+            expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
     ):
         st.caption(f"📍 {event['location']['name']}")
 
-        # Small preview of existing media (optional but nice)
-        if event["media"].get("photos") or event["media"].get("videos"):
-            cols = st.columns(3)
-            for i, p in enumerate(event["media"].get("photos", [])[:3]):
-                with cols[i % 3]:
-                    try:
-                        if isinstance(p, str) and p.startswith("gs://"):
-                            b = media_bytes_anywhere(p)  # uses gcs_bytes_from_gs_uri()
-                            if b:
-                                st.image(b, width="stretch")
+        # ── Media preview using THUMBNAILS (lightweight) ────────────────
+        has_media = event["media"].get("photos") or event["media"].get("videos")
+        if has_media:
+            # Photos preview (up to 3)
+            photos = event["media"].get("photos", [])[:3]
+            if photos:
+                cols = st.columns(min(3, len(photos)))
+                for i, orig_path in enumerate(photos):
+                    with cols[i % len(cols)]:
+                        # Try thumbnail first
+                        if IS_CLOUD:
+                            thumb_url = get_thumbnail_gcs_path(orig_path)
+                            if thumb_url and thumbnail_exists_in_gcs(thumb_url):
+                                st.image(make_public_url(thumb_url), width="stretch")
+                                #st.image(make_public_url(thumb_url), use_column_width=True)
                             else:
-                                st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
+                                # Fallback: try to load original (may be slow)
+                                try:
+                                    b = media_bytes_anywhere(orig_path)
+                                    if b:
+                                        st.image(b, width="stretch")
+                                        #st.image(b, use_column_width=True)
+                                    else:
+                                        st.caption(f"🖼️ Preview unavailable")
+                                except:
+                                    st.caption(f"🖼️ Missing ({os.path.basename(orig_path)})")
                         else:
-                            # local relative path
-                            lp = resolve_local_path(p)
-                            if lp.exists():
-                                st.image(lp.read_bytes(), width="stretch")
+                            # Local mode
+                            thumb_path = Path(orig_path).with_name(
+                                Path(orig_path).stem + THUMB_SUFFIX_PHOTO
+                            )
+                            tp = resolve_local_path(thumb_path)
+                            logger.info(f"thumb_path in Edit is {thumb_path} - {tp}")
+                            if tp.is_file():
+                                logger.info(f"pass photo thumnail {tp}")
+                                #st.image(str(tp), use_column_width=True)
+                                st.image(str(tp), width="stretch")
                             else:
-                                st.caption(f"🖼️ Missing ({os.path.basename(p)})")
-                    except Exception:
-                        st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
-            # ---- VIDEO PREVIEW (SIDEBAR) ----
-            videos = event.get("media", {}).get("videos", [])
+                                # Fallback to original
+                                lp = resolve_local_path(orig_path)
+                                logger.info(f"pass photo orig path {tp}")
+                                if lp.exists():
+                                    st.image(lp.read_bytes(), width="stretch")
+                                    #st.image(lp.read_bytes(), use_column_width=True)
+                                else:
+                                    st.caption(f"🖼️ Missing ({os.path.basename(orig_path)})")
+
+            # Videos preview (up to 2) — prefer short clip thumbnail
+            videos = event["media"].get("videos", [])[:2]
             if videos:
-                st.markdown("**🎬 Videos**")
-                for v in videos[:2]:  # limit for performance
-                    try:
-                        if isinstance(v, str) and v.startswith("gs://"):
-                            vb = media_bytes_anywhere(v)
-                            if vb:
-                                st.video(vb)
-                            else:
-                                st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
+                st.markdown("**🎬 Video Previews**")
+                for orig_path in videos:
+                    if IS_CLOUD:
+                        thumb_url = get_thumbnail_gcs_path(orig_path)
+                        if thumb_url and thumbnail_exists_in_gcs(thumb_url):
+                            # Show short video clip (much lighter than full video)
+                            st.video(make_public_url(thumb_url))
                         else:
-                            lp = resolve_local_path(v)
+                            # Fallback: original video (can be heavy in sidebar)
+                            try:
+                                vb = media_bytes_anywhere(orig_path)
+                                if vb:
+                                    st.video(vb)
+                                else:
+                                    st.caption(f"🎬 Preview unavailable")
+                            except:
+                                st.caption(f"🎬 Missing ({os.path.basename(orig_path)})")
+                    else:
+                        # Local mode
+                        thumb_path = Path(orig_path).with_name(
+                            Path(orig_path).stem + THUMB_SUFFIX_VIDEO
+                        )
+                        logger.info(f"thumb_path in Edit is {thumb_path} - {resolve_local_path(thumb_path)}")
+                        tp = resolve_local_path(thumb_path)
+                        if tp.is_file():
+                            logger.info(f"pass thumnail {tp}")
+                            st.video(str(tp))
+                        else:
+                            lp = resolve_local_path(orig_path)
+                            logger.info(f"pass orig path {lp}")
                             if lp.exists():
                                 st.video(lp.read_bytes())
                             else:
-                                st.caption(f"🎬 Missing ({os.path.basename(v)})")
-                    except Exception:
-                        st.caption(f"🎬 Preview unavailable ({os.path.basename(v)})")
-            else:
-                st.caption("No videos attached.")
+                                st.caption(f"🎬 Missing ({os.path.basename(orig_path)})")
 
-            # for i, p in enumerate(event["media"].get("photos", [])[:3]):
-            #     with cols[i % 3]:
-            #         try:
-            #             st.image(p, width="stretch")
-            #         except Exception as e:
-            #             st.caption(f"🖼️ Preview unavailable ({os.path.basename(p)})")
-            #             # Optional: log for debugging
-            #             # logger.warning(f"Missing media: {p} → {str(e)}")
-            #         #st.image(p,width="stretch")
+        else:
+            st.caption("No media attached yet.")
 
         # Edit / Delete buttons — always visible when not editing
         if not st.session_state.current_journey_locked and not is_editing_this:
@@ -2856,8 +3326,6 @@ for idx, event in enumerate(sorted_events, start=1):
                 else:
                     lon_value = float(st.session_state.edit_lon)
 
-                logger.info(f"pass Edit marker {lat_value} {st.session_state.edit_lat}")
-                logger.info(f"pass Edit marker {lon_value} {st.session_state.edit_lon}")
                 with col_lat:
                     current_lat_key = f"lat_{event['id']}"
                     if current_lat_key in st.session_state:
@@ -2866,14 +3334,14 @@ for idx, event in enumerate(sorted_events, start=1):
                             # st.rerun()   # often helps — try with & without
                     new_lat = st.number_input(
                         "Latitude",
-                        #value=lat_value,
-                        #value=float(event["location"]["latitude"]),
+                        # value=lat_value,
+                        # value=float(event["location"]["latitude"]),
                         value=lat_value,
                         format="%.6f", step=0.000001,
                         key=f"lat_{event['id']}"
                     )
 
-                   # new_lat = st.number_input("Latitude", key=f"lat_{event['id']}", format="%.6f", step=0.000001)
+                # new_lat = st.number_input("Latitude", key=f"lat_{event['id']}", format="%.6f", step=0.000001)
 
                 with col_lon:
                     current_lon_key = f"lon_{event['id']}"
@@ -2883,9 +3351,9 @@ for idx, event in enumerate(sorted_events, start=1):
                             # st.rerun()   # often helps — try with & without
                     new_lon = st.number_input(
                         "Longitude",
-                        #value=lon_value,
+                        # value=lon_value,
                         value=lon_value,
-                        #value=float(event["location"]["longitude"]),
+                        # value=float(event["location"]["longitude"]),
                         format="%.6f", step=0.000001,
                         key=f"lon_{event['id']}"
                     )
@@ -2925,12 +3393,12 @@ for idx, event in enumerate(sorted_events, start=1):
 
                 if save_clicked:
                     # Update fields
-                    event["location"]["latitude"]  = new_lat
+                    event["location"]["latitude"] = new_lat
                     event["location"]["longitude"] = new_lon
-                    event["title"]                 = new_title
-                    event["date"]                  = new_date.strftime("%Y-%m-%d")
-                    event["location"]["name"]      = new_loc_name
-                    event["description"]           = new_desc
+                    event["title"] = new_title
+                    event["date"] = new_date.strftime("%Y-%m-%d")
+                    event["location"]["name"] = new_loc_name
+                    event["description"] = new_desc
 
                     # Handle new uploads (same as add new memory)
                     if new_photos:
@@ -2944,7 +3412,9 @@ for idx, event in enumerate(sorted_events, start=1):
                             else:
                                 path = UPLOADS_PHOTOS / fname
                                 path.write_bytes(file_bytes)
-                                event["media"].setdefault("photos", []).append(str(path))
+                                relative_path = to_relative_path(path)
+                                event["media"].setdefault("photos", []).append(relative_path)
+                                #event["media"].setdefault("photos", []).append(str(path))
 
                     if new_videos:
                         for up in new_videos:
@@ -2957,13 +3427,15 @@ for idx, event in enumerate(sorted_events, start=1):
                             else:
                                 path = UPLOADS_VIDEOS / fname
                                 path.write_bytes(file_bytes)
-                                event["media"].setdefault("videos", []).append(str(path))
+                                relative_path = to_relative_path(path)
+                                event["media"].setdefault("videos", []).append(relative_path)
+                                #event["media"].setdefault("videos", []).append(str(path))
 
                     save_data_to_storage(st.session_state.data)
                     st.session_state.force_map_refresh += 1
                     st.session_state.editing_event_id = None
-                    st.session_state.pop("edit_lat" , None)
-                    st.session_state.pop("edit_lon" , None)
+                    st.session_state.pop("edit_lat", None)
+                    st.session_state.pop("edit_lon", None)
                     st.success("Memory updated!")
                     log_msg = f"Update Memory• | {get_audit_actor_info()}"
                     append_to_log(log_msg, message_type="user_login", throttle=False)  # no throttle on logout
