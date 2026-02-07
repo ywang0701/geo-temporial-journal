@@ -7,6 +7,9 @@
 # video_url = f"https://storage.googleapis.com/journey-journal/{v.replace('gs://journey-journal/', '')}"
 # Remember to run gsutil iam ch allUsers:objectViewer gs://journey-journal once)
 # After running, open the .kml in Google Earth Pro or Google My Maps → click markers to see videos play and photos zoom.
+# BYPASS_LOGIN = True or False for developing purpose
+# USE_GCS = True   USE_GCS=True .venv/scripts/python.exe -m streamlit run app.py
+# set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\YourName\.secrets\journey-local-key.json
 import base64
 import html
 import io
@@ -88,6 +91,56 @@ oauth2 = OAuth2Component(
     REVOKE_URL,
 )
 
+# === DETECT IF RUNNING ON STREAMLIT CLOUD or LOCAL  ===
+IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
+# IS_CLOUD = IS_HF                     # treat HF as cloud backend
+
+BYPASS_LOGIN = os.getenv("BYPASS_LOGIN", "auto").lower()
+
+if BYPASS_LOGIN in ("true", "yes", "1"):
+    BYPASS_LOGIN = True
+else:
+    BYPASS_LOGIN = False
+
+USE_GCS = os.getenv("USE_GCS", "auto").lower()
+
+if USE_GCS in ("true", "yes", "1"):
+    IS_CLOUD = True
+else:
+    IS_CLOUD = IS_HF
+
+
+# ───────────────────────────────────────────────────────────────
+# Log configuration
+# ───────────────────────────────────────────────────────────────
+
+LOG_DIR_NAME = "logs"
+LOG_BASE_NAME = "jj7_log"
+# ── Auth state initialization (MUST BE FIRST) ───────────────────────
+
+#BYPASS_LOGIN = False # ← change to False when you want real login again
+
+if "auth" not in st.session_state:
+    if BYPASS_LOGIN:
+        st.session_state.auth = {
+            "token": {"fake": "bypass-token"},
+            "refresh_token": None,
+            "user_info": {
+                "name": "Bypassed User",
+                "email": "bypass@example.com",
+                "sub": "fake-user-123"
+            },
+            "is_logged_in": True,
+        }
+    else:
+        st.session_state.auth = {
+            "token": None,
+            "refresh_token": None,
+            "user_info": None,
+            "is_logged_in": False,
+        }
+
+
 # ==================== LOGGING & PATHS ====================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -109,6 +162,7 @@ if not logger.handlers:
 
 # Quick test log on startup
 logger.info("🚀 App started")
+logger.info(f"Setup  IS CLOUD: {BYPASS_LOGIN}  use GCS: {USE_GCS}")
 if "edit_lat" not in st.session_state:
     st.session_state.edit_lat = None
 if "edit_lon" not in st.session_state:
@@ -161,7 +215,7 @@ import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-
+logger.info(f"Setup  IS CLOUD: {BYPASS_LOGIN}  use GCS: {USE_GCS}")
 
 
 def get_thumbnail_gcs_path(original_path: str) -> str | None:
@@ -1439,16 +1493,7 @@ def get_audit_actor_info() -> str:
 
     return " | ".join(parts)
 
-# === DETECT IF RUNNING ON STREAMLIT CLOUD ===
-IS_HF = bool(os.getenv("SPACE_ID"))  # HF sets SPACE_ID automatically
-IS_CLOUD = IS_HF                     # treat HF as cloud backend
 
-# ───────────────────────────────────────────────────────────────
-# Log configuration
-# ───────────────────────────────────────────────────────────────
-
-LOG_DIR_NAME = "logs"
-LOG_BASE_NAME = "jj7_log"
 
 if IS_CLOUD:
     LOG_PREFIX = f"{LOG_DIR_NAME}/{LOG_BASE_NAME}"
@@ -1488,28 +1533,71 @@ def init_gcs_bucket_from_env():
     client = storage.Client(credentials=creds, project=sa_info["project_id"])
     return client.bucket(bucket_name)
 
+# if IS_CLOUD:
+#     sa_json = os.getenv("GCP_SA_JSON")
+#     bucket_name = os.getenv("GCS_BUCKET_NAME")
+#
+#     if not sa_json:
+#         raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
+#     if not bucket_name:
+#         raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+#
+#     sa_info = json.loads(sa_json)
+#     creds = service_account.Credentials.from_service_account_info(sa_info)
+#     storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
+#     bucket = storage_client.bucket(bucket_name)
+#     st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
+#     bucket = init_gcs_bucket_from_env()
+# else:
+#     st.sidebar.info("🖥️ Running locally (filesystem)")
+#     UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
+#     UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
+#     UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
+#     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
+
+############<<<<<
 if IS_CLOUD:
-    sa_json = os.getenv("GCP_SA_JSON")
     bucket_name = os.getenv("GCS_BUCKET_NAME")
-
-    if not sa_json:
-        raise RuntimeError("Missing HF Secret: GCP_SA_JSON")
     if not bucket_name:
-        raise RuntimeError("Missing HF Variable: GCS_BUCKET_NAME")
+        raise RuntimeError("GCS_BUCKET_NAME environment variable is required when using GCS")
 
-    sa_info = json.loads(sa_json)
-    creds = service_account.Credentials.from_service_account_info(sa_info)
-    storage_client = storage.Client(credentials=creds, project=sa_info["project_id"])
+    sa_json = os.getenv("GCP_SA_JSON")
+
+    if sa_json:
+        # Hugging Face style: raw JSON string from secrets
+        try:
+            sa_info = json.loads(sa_json)
+            creds = service_account.Credentials.from_service_account_info(sa_info)
+            project_id = sa_info["project_id"]
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"GCP_SA_JSON is set but contains invalid JSON: {e}")
+    else:
+        # Local development: use standard Application Default Credentials
+        try:
+            from google.auth import default
+            creds, project_id = default()
+            if not creds:
+                raise ValueError("No credentials found")
+        except Exception as e:
+            raise RuntimeError(
+                "Cannot authenticate to GCS locally.\n\n"
+                "Please do one of the following:\n"
+                "1. Set GOOGLE_APPLICATION_CREDENTIALS to your service account JSON file path:\n"
+                "   set GOOGLE_APPLICATION_CREDENTIALS=C:\\path\\to\\key.json\n"
+                "2. Or run: gcloud auth application-default login\n"
+                f"\nOriginal error: {str(e)}"
+            )
+
+    storage_client = storage.Client(credentials=creds, project=project_id)
     bucket = storage_client.bucket(bucket_name)
-    st.sidebar.success("✅ Running on Hugging Face (GCS enabled)")
-    bucket = init_gcs_bucket_from_env()
+    st.sidebar.success(f"✅ GCS connected (bucket: {bucket_name})")
 else:
-    st.sidebar.info("🖥️ Running locally (filesystem)")
+    st.sidebar.info("🖥️ Using local filesystem")
     UPLOADS_PHOTOS = BASE_DIR / "uploads" / "photos"
     UPLOADS_VIDEOS = BASE_DIR / "uploads" / "videos"
     UPLOADS_PHOTOS.mkdir(parents=True, exist_ok=True)
     UPLOADS_VIDEOS.mkdir(parents=True, exist_ok=True)
-
+############>>>>>
 class init_user:
     is_logged_in = False
     name = "init_user"
@@ -1521,12 +1609,34 @@ st.user = init_user()
 #          TEMP BYPASS – Google login is broken right now
 # ──────────────────────────────────────────────────────────────
 
-# Force login for everyone (temporary dev workaround)
-if False:  # ← change to False when you fix real auth
-    if "bypass_auth" not in st.session_state:
-        st.session_state.bypass_auth = True
+# # Force login for everyone (temporary dev workaround)
+# if True:  # ← change to False when you fix real auth
+#     if "bypass_auth" not in st.session_state:
+#         st.session_state.bypass_auth = True
+#         st.session_state.user_info = {
+#             "name": "Test User 🔥",
+#             "email": "test@example.com",
+#             "sub": "bypass-20260119",
+#         }
+#
+#     class FakeUser:
+#         is_logged_in = True
+#         name = st.session_state.user_info["name"]
+#         email = st.session_state.user_info["email"]
+#         sub = st.session_state.user_info["sub"]
+#
+#     st.user = FakeUser()
+#
+#     # Show warning banner so you don't forget
+#     #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
+#
+# else:
+#     pass
+if True:  # ← BYPASS_LOGIN enabled (set to False to require real Google login)
+    if "BYPASS_LOGIN" not in st.session_state:
+        st.session_state.BYPASS_LOGIN = True
         st.session_state.user_info = {
-            "name": "Test User 🔥",
+            "name": "舟 🔥🔥🔥",           # ← personalized (optional)
             "email": "test@example.com",
             "sub": "bypass-20260119",
         }
@@ -1539,10 +1649,15 @@ if False:  # ← change to False when you fix real auth
 
     st.user = FakeUser()
 
-    # Show warning banner so you don't forget
-    #st.warning("⚠️  AUTH BYPASS ACTIVE  – Google login is temporarily disabled")
+    # Visible warning so it's clear bypass is active
+    st.warning("⚠️ AUTH BYPASS ACTIVE — everyone is auto-logged in as "
+               f"{st.session_state.user_info['name']} (no Google login needed)")
+
+    # Optional: also force current_journey_locked = False so editing is allowed
+    st.session_state.current_journey_locked = False
 
 else:
+    # Real Google OAuth flow runs here (unchanged)
     pass
 
 # ==================== DEVICE DETECTION ====================
@@ -2286,28 +2401,73 @@ st.markdown('<div id="login-section"></div>', unsafe_allow_html=True)
 if not is_logged_in():
     with st.container():
 
-        result = oauth2.authorize_button(
-            name="Sign in with Google to Create and Edit your journeies.",
-            redirect_uri=REDIRECT_URI,
-            scope=SCOPE,
-            key="google_login_btn",
-            extras_params={
-                "access_type": "offline",
-                "prompt": "consent"
-            },
-            pkce="S256",
-            use_container_width=True,
-        )
-        st.title("👆 Click **Sign in with Google** above to begin (Scroll up if you don't see it) ✨")
-        if result and result.get("token"):
-            token = result["token"]
-            st.session_state.auth["token"] = result["token"]
-            st.session_state.auth["user_info"] = result.get("user_info", {})
-            st.session_state.auth["is_logged_in"] = True
-            st.session_state.current_journey_locked = False
-            if token.get("refresh_token"):
-                st.session_state.auth["refresh_token"] = token["refresh_token"]
-            st.rerun()
+        # result = oauth2.authorize_button(
+        #     name="Sign in with Google to Create and Edit your journeies.",
+        #     redirect_uri=REDIRECT_URI,
+        #     scope=SCOPE,
+        #     key="google_login_btn",
+        #     extras_params={
+        #         "access_type": "offline",
+        #         "prompt": "consent"
+        #     },
+        #     pkce="S256",
+        #     use_container_width=True,
+        # )
+        # st.title("👆 Click **Sign in with Google** above to begin (Scroll up if you don't see it) ✨")
+        # if result and result.get("token"):
+        #     token = result["token"]
+        #     st.session_state.auth["token"] = result["token"]
+        #     st.session_state.auth["user_info"] = result.get("user_info", {})
+        #     st.session_state.auth["is_logged_in"] = True
+        #     st.session_state.current_journey_locked = False
+        #     if token.get("refresh_token"):
+        #         st.session_state.auth["refresh_token"] = token["refresh_token"]
+        #     st.rerun()
+        if BYPASS_LOGIN:
+            # Fake successful login — no button shown
+            if not st.session_state.auth.get("is_logged_in", False):
+                st.session_state.auth["is_logged_in"] = True
+                st.session_state.auth["user_info"] = {
+                    "name": "Bypassed User",
+                    "email": "bypass@example.com"
+                }
+                st.session_state.current_journey_locked = False
+                # Optional: st.success("Login bypassed — full edit mode active")
+        else:
+            # Show real Google login button only when bypass is off
+            result = oauth2.authorize_button(
+                name="Sign in with Google to Create and Edit your journeies.",
+                redirect_uri=REDIRECT_URI,
+                scope=SCOPE,
+                key="google_login_btn",
+                extras_params={
+                    "access_type": "offline",
+                    "prompt": "consent"
+                },
+                pkce="S256",
+                use_container_width=True,
+            )
+            st.title("👆 Click **Sign in with Google** above to begin (Scroll up if you don't see it) ✨")
+            if result and result.get("token"):
+                token = result["token"]
+                st.session_state.auth["token"] = token
+                st.session_state.auth["user_info"] = result.get("user_info", {})
+                st.session_state.auth["is_logged_in"] = True
+                st.session_state.current_journey_locked = False
+                if token.get("refresh_token"):
+                    st.session_state.auth["refresh_token"] = token["refresh_token"]
+                st.rerun()
+            # ── Show sign-out only when real login is active (not bypass) ────────
+        if not BYPASS_LOGIN and st.session_state.auth.get("is_logged_in", False):
+            if st.button("Sign out", type="secondary", use_container_width=True):
+                st.session_state.auth = {
+                    "token": None,
+                    "refresh_token": None,
+                    "user_info": None,
+                    "is_logged_in": False
+                }
+                st.session_state.current_journey_locked = True
+                st.rerun()
 else:
     # st.success(f"Logged in as {st.session_state.auth['user_info'].get('name', 'User')}")
     # Optional: extra edit controls here if you want
