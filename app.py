@@ -3215,7 +3215,7 @@ for idx, event in enumerate(sorted_events, start=1):
         has_media = event["media"].get("photos") or event["media"].get("videos")
         if has_media:
             # Photos preview (up to 3)
-            photos = event["media"].get("photos", [])[:3]
+            photos = event["media"].get("photos", [])[:10]
             if photos:
                 cols = st.columns(min(3, len(photos)))
                 for i, orig_path in enumerate(photos):
@@ -3246,15 +3246,17 @@ for idx, event in enumerate(sorted_events, start=1):
                             logger.info(f"thumb_path in Edit is {thumb_path} - {tp}")
                             if tp.is_file():
                                 #logger.info(f"pass photo thumnail {tp}")
-                                st.image(str(tp), use_column_width=True)
+                                #st.image(str(tp), use_column_width=True)
                                 #st.image(str(tp), width="stretch")
+                                st.image(str(tp))
                             else:
                                 # Fallback to original
                                 lp = resolve_local_path(orig_path)
                                 #logger.info(f"pass photo orig path {tp}")
                                 if lp.exists():
+                                    st.image(lp.read_bytes())
                                     #st.image(lp.read_bytes(), width="stretch")
-                                    st.image(lp.read_bytes(), use_column_width=True)
+                                    #st.image(lp.read_bytes(), use_column_width=True)
                                 else:
                                     st.caption(f"🖼️ Missing ({os.path.basename(orig_path)})")
 
