@@ -218,28 +218,60 @@ logger = logging.getLogger(__name__)
 logger.info(f"Setup  IS CLOUD: {BYPASS_LOGIN}  use GCS: {USE_GCS}")
 
 
+# def get_thumbnail_gcs_path(original_path: str) -> str | None:
+#     """Only meaningful in cloud mode - returns gs:// path for thumbnail"""
+#     logger.info(f" >>>>>>>>>>>>>>>>> {original_path}")
+#     if not IS_CLOUD:
+#         return None
+#
+#     if not original_path.startswith("gs://"):
+#         # Try best-effort conversion for legacy local-style paths
+#         if "photos/" in original_path or "videos/" in original_path:
+#             clean = original_path.split("/", 1)[-1] if "/" in original_path else original_path
+#             original_path = f"gs://journey-journal/{clean}"
+#         else:
+#             logger.warning(f"Cannot convert to GCS path: {original_path}")
+#             return None
+#
+#     p = Path(original_path.replace("gs://", ""))
+#     folder = p.parent
+#     stem = p.stem
+#     suffix = THUMB_SUFFIX_VIDEO if p.suffix.lower() in {".mp4", ".mov"} else THUMB_SUFFIX_PHOTO
+#
+#     logger.info(f" >>>>>>>>>>>>>>>>> {folder}     {stem}       {suffix }  {p.parts[0]}")
+#     thumb_blob = folder / f"{stem}{suffix}"
+#     return f"gs://{p.parts[0]}/{thumb_blob}"
+#
 def get_thumbnail_gcs_path(original_path: str) -> str | None:
-    """Only meaningful in cloud mode - returns gs:// path for thumbnail"""
-    if not IS_CLOUD:
-        return None
-
     if not original_path.startswith("gs://"):
-        # Try best-effort conversion for legacy local-style paths
+        # Try to handle legacy/local-style paths if needed
         if "photos/" in original_path or "videos/" in original_path:
-            clean = original_path.split("/", 1)[-1] if "/" in original_path else original_path
-            original_path = f"gs://journey-journal/{clean}"
+            # Best-effort: assume bucket is journey-journal
+            relative = original_path.split("/", 1)[-1] if "/" in original_path else original_path
+            original_path = f"gs://journey-journal/{relative}"
         else:
             logger.warning(f"Cannot convert to GCS path: {original_path}")
             return None
 
-    p = Path(original_path.replace("gs://", ""))
-    folder = p.parent
-    stem = p.stem
+    # Remove gs:// prefix
+    without_prefix = original_path[5:]                   # "journey-journal/photos/xxx.jpg"
+
+    # Split bucket from the rest (only once)
+    bucket, blob_path = without_prefix.split("/", 1)     # bucket = "journey-journal", blob_path = "photos/xxx.jpg"
+
+    p = Path(blob_path)
+    folder = p.parent                                    # Path("photos") or Path("videos")
+    stem   = p.stem
     suffix = THUMB_SUFFIX_VIDEO if p.suffix.lower() in {".mp4", ".mov"} else THUMB_SUFFIX_PHOTO
 
-    thumb_blob = folder / f"{stem}{suffix}"
-    return f"gs://{p.parts[0]}/{thumb_blob}"
+    thumb_blob = folder / f"{stem}{suffix}"              # Path("photos/xxx_thumb.jpg")
 
+    # Join with bucket + ensure leading slash after bucket
+    thumb_path = f"{bucket}/{thumb_blob.as_posix()}"     # "journey-journal/photos/xxx_thumb.jpg"
+
+    logger.info(f">>> folder={folder}  stem={stem}  suffix={suffix}  full={thumb_path}")
+
+    return f"gs://{thumb_path}"
 
 def thumbnail_exists(original_path: str) -> bool:
     """Check if thumbnail already exists (local or GCS)"""
@@ -295,6 +327,7 @@ def generate_thumbnail(media_path: str, force: bool = False) -> str | None:
 
     try:
         # ── Prepare input file ───────────────────────────────────────
+        logger.info(f" --------------- Should be ONCE generating thumbnail for ")
         if IS_CLOUD and media_path.startswith("gs://"):
             blob_name = media_path.replace("gs://journey-journal/", "")
             blob = bucket.blob(blob_name)
@@ -313,7 +346,7 @@ def generate_thumbnail(media_path: str, force: bool = False) -> str | None:
                 return None
 
         is_video = input_path.suffix.lower() in {".mp4", ".mov"}
-
+        logger.info(f" ----- 1/2 Original {input_path} media_path {media_path}")
         # ── Temporary output ─────────────────────────────────────────
         out_suffix = ".mp4" if is_video else ".jpg"
         temp_output = tempfile.NamedTemporaryFile(delete=False, suffix=out_suffix)
@@ -351,16 +384,20 @@ def generate_thumbnail(media_path: str, force: bool = False) -> str | None:
         # ── Save result ──────────────────────────────────────────────
         if IS_CLOUD:
             # Upload to GCS
+            logger.info(f" ----------------> 2/2 A media_path SAVE  {media_path}")
             thumb_gcs = get_thumbnail_gcs_path(media_path)
+            logger.info(f" ----------------> 2/2 B thumb_gcs  SAVE  {thumb_gcs}")
             if not thumb_gcs:
                 return None
 
             content_type = "video/mp4" if is_video else "image/jpeg"
             blob_name = thumb_gcs.replace("gs://journey-journal/", "")
+            logger.info(f" ----------------> 2/2 C blob_name SAVE  {blob_name}")
             blob = bucket.blob(blob_name)
             blob.upload_from_filename(str(out_path), content_type=content_type)
 
             public_url = f"{GCS_BUCKET_PREFIX}{blob_name}"
+            logger.info(f" -------------------  > Public URL: {public_url}, {GCS_BUCKET_PREFIX} , {blob_name}")
             logger.info(f"Uploaded thumbnail to GCS: {public_url}")
             return public_url
         else:
@@ -376,10 +413,11 @@ def generate_thumbnail(media_path: str, force: bool = False) -> str | None:
         return None
 
     finally:
-        if temp_input and Path(temp_input.name).exists():
-            Path(temp_input.name).unlink(missing_ok=True)
-        if temp_output and Path(temp_output.name).exists():
-            Path(temp_output.name).unlink(missing_ok=True)
+        pass # TODO. need to remove the temp files
+        # if temp_input and Path(temp_input.name).exists():
+        #     Path(temp_input.name).unlink(missing_ok=True)
+        # if temp_output and Path(temp_output.name).exists():
+        #     Path(temp_output.name).unlink(missing_ok=True)
 
 
 def refresh_thumbnails_current_journey(force: bool = False):
@@ -1108,11 +1146,18 @@ def build_popup_html(event):
 
         for p in photos:
             if IS_CLOUD:
-                # Cloud: use public URL
-                thumb_url = get_thumbnail_gcs_path(p)
-                src = make_public_url(thumb_url) if thumb_url and thumbnail_exists_in_gcs(
-                    thumb_url) else make_public_url(p)
-                full_url = make_public_url(p)
+                # # Cloud: use public URL
+                # thumb_url = get_thumbnail_gcs_path(p)
+                # src = make_public_url(thumb_url) if thumb_url and thumbnail_exists_in_gcs(
+                #     thumb_url) else make_public_url(p)
+                # full_url = make_public_url(p)
+                thumb_gcs = get_thumbnail_gcs_path(p)
+                if thumb_gcs and thumbnail_exists_in_gcs(thumb_gcs):
+                    src = make_public_url(thumb_gcs)
+                    full = make_public_url(p)
+                else:
+                    src = make_public_url(p)  # fallback to original
+                    full = src
             else:
                 # Local: base64 thumbnail (prefer thumb, fallback original if small)
                 thumb_path = Path(p).with_name(Path(p).stem + THUMB_SUFFIX_PHOTO)
@@ -1170,21 +1215,28 @@ def build_popup_html(event):
     if videos:
         popup += "<strong style='margin-top:15px;display:block;'>Videos:</strong><div style='display:flex;flex-direction:column;gap:12px;'>"
         for v in videos:
-            thumb_path = Path(v).with_name(Path(v).stem + THUMB_SUFFIX_VIDEO)
-            #tp = resolve_local_path(thumb_path)
-            #logger.info(f" popup tp ----------------------- {tp} - {thumb_path} v = {v}")
-            b64 = get_video_base64(thumb_path)
-            fn = os.path.basename(thumb_path)
-            if b64:
-                dl = f"data:video/mp4;base64,{b64}"
-                popup += f"""
-                <div style="text-align:center;">
-                    <video controls style="max-width:100%;border-radius:8px;">
-                        <source src="{dl}" type="video/mp4">
-                    </video>
-                    <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
-                </div>
-                """
+            if IS_CLOUD:
+                thumb_gcs = get_thumbnail_gcs_path(v)
+                if thumb_gcs and thumbnail_exists_in_gcs(thumb_gcs):
+                    src = make_public_url(thumb_gcs)  # short MP4 clip
+                else:
+                    src = make_public_url(v)  # fallback full video
+            else:
+                thumb_path = Path(v).with_name(Path(v).stem + THUMB_SUFFIX_VIDEO)
+                #tp = resolve_local_path(thumb_path)
+                #logger.info(f" popup tp ----------------------- {tp} - {thumb_path} v = {v}")
+                b64 = get_video_base64(thumb_path)
+                fn = os.path.basename(thumb_path)
+                if b64:
+                    dl = f"data:video/mp4;base64,{b64}"
+                    popup += f"""
+                    <div style="text-align:center;">
+                        <video controls style="max-width:100%;border-radius:8px;">
+                            <source src="{dl}" type="video/mp4">
+                        </video>
+                        <br><small><a href="{dl}" download="{fn}">📥 Download</a></small>
+                    </div>
+                    """
         popup += "</div>"
 
 
@@ -3187,11 +3239,11 @@ with st.sidebar.expander("🛠️ Journey Maintenance"):
         time.sleep(0.8)
         st.rerun()
 
-    force = st.checkbox("Force regenerate all", False)
-    if force and st.button("🔄 Force ALL", type="secondary"):
-        refresh_thumbnails_current_journey(force=True)
-        time.sleep(0.8)
-        st.rerun()
+    # force = st.checkbox("Force regenerate all", False)
+    # if force and st.button("🔄 Force ALL", type="secondary"):
+    #     refresh_thumbnails_current_journey(force=True)
+    #     time.sleep(0.8)
+    #     st.rerun()
 
 ############## Thrumnail ###############
 
@@ -3387,6 +3439,7 @@ for idx, event in enumerate(sorted_events, start=1):
                                 #st.image(make_public_url(thumb_url), width="stretch")
                                 st.image(make_public_url(thumb_url), use_column_width=True)
                             else:
+                                st.caption("Thumbnail generating... using full image")
                                 # Fallback: try to load original (may be slow)
                                 try:
                                     b = media_bytes_anywhere(orig_path)
@@ -3421,7 +3474,8 @@ for idx, event in enumerate(sorted_events, start=1):
                                     st.caption(f"🖼️ Missing ({os.path.basename(orig_path)})")
 
             # Videos preview (up to 2) — prefer short clip thumbnail
-            videos = event["media"].get("videos", [])[:2]
+            #videos = event["media"].get("videos", [])[:2]
+            videos = event["media"].get("videos", [])[:10]
             if videos:
                 st.markdown("**🎬 Video Previews**")
                 for orig_path in videos:
@@ -3431,6 +3485,7 @@ for idx, event in enumerate(sorted_events, start=1):
                             # Show short video clip (much lighter than full video)
                             st.video(make_public_url(thumb_url))
                         else:
+                            st.caption("Thumbnail generating... using full image")
                             # Fallback: original video (can be heavy in sidebar)
                             try:
                                 vb = media_bytes_anywhere(orig_path)
