@@ -3436,16 +3436,16 @@ for idx, event in enumerate(sorted_events, start=1):
                         if IS_CLOUD:
                             thumb_url = get_thumbnail_gcs_path(orig_path)
                             if thumb_url and thumbnail_exists_in_gcs(thumb_url):
-                                #st.image(make_public_url(thumb_url), width="stretch")
-                                st.image(make_public_url(thumb_url), use_column_width=True)
+                                st.image(make_public_url(thumb_url), width="stretch")
+                                #st.image(make_public_url(thumb_url), use_column_width=True)
                             else:
                                 st.caption("Thumbnail generating... using full image")
                                 # Fallback: try to load original (may be slow)
                                 try:
                                     b = media_bytes_anywhere(orig_path)
                                     if b:
-                                        #st.image(b, width="stretch")
-                                        st.image(b, use_column_width=True)
+                                        st.image(b, width="stretch")
+                                        #st.image(b, use_column_width=True)
                                     else:
                                         st.caption(f"🖼️ Preview unavailable")
                                 except:
