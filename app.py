@@ -10,6 +10,7 @@
 # BYPASS_LOGIN = True or False for developing purpose
 # USE_GCS = True   USE_GCS=True .venv/scripts/python.exe -m streamlit run app.py
 # set GOOGLE_APPLICATION_CREDENTIALS=C:\Users\YourName\.secrets\journey-local-key.json
+# BYPASS_LOGIN=true  .venv/scripts/python.exe -m streamlit run app.py
 import base64
 import html
 import io
@@ -575,6 +576,11 @@ def make_public_url(path):
     # fallback - return as is (might not work)
     return path
 
+def sort_key(e):
+    d = e.get("date", "0000-00-00")
+    t = e.get("time") or "99:99"  # unknown time → end of day
+    return (d, t)
+
 def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     """
     Updated version – 2026-02
@@ -586,7 +592,8 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
     """
     kml = simplekml.Kml(name="My Journey • Photos + Videos", open=1)
 
-    sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    #sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    sorted_events = sorted(events, key=sort_key)
 
     path_coords = []
 
@@ -610,6 +617,17 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
             date_str = event.get("date", "Unknown date")
             desc     = event.get("description") or ""
             loc_name = loc.get("name", "Unnamed location")
+            if event.get("date"):
+                try:
+                    if event.get("time"):
+                        dt = datetime.strptime(f"{event['date']} {event['time']}", "%Y-%m-%d %H:%M")
+                    else:
+                        dt = datetime.strptime(event['date'], "%Y-%m-%d")
+                        dt = dt.replace(hour=12, minute=0)  # noon fallback
+
+                    #pnt.timestamp.when = dt.isoformat() + "Z"
+                except ValueError:
+                    pass
 
             # Tooltip (mouse hover)
             short_desc = (desc[:100] + "...") if len(desc) > 100 else desc
@@ -623,7 +641,7 @@ def export_to_kml(events, output_filename="my_journey_with_timeline.kml"):
                     {title}
                 </h2>
                 <p style="text-align:center; color:#444; font-weight:bold; margin:8px 0 18px;">
-                    📅 {date_str}  •  📍 {loc_name}
+                    📅 {dt}  •  📍 {loc_name}
                 </p>
             """
 
@@ -749,7 +767,8 @@ def export_to_kml_bytes(events) -> bytes:
 
     kml = simplekml.Kml(name="My Journey with Timeline", open=1)
 
-    sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    #sorted_events = sorted(events, key=lambda e: e.get("date", "0000-00-00"))
+    sorted_events = sorted(events, key=sort_key)
     logger.info(f"Sorted events count: {len(sorted_events)}")
 
     if sorted_events:
@@ -815,7 +834,8 @@ def export_to_kml_bytes(events) -> bytes:
 
 def get_sorted_events_with_index():
     events = st.session_state.data.get("events", [])
-    sorted_events = sorted(events, key=lambda x: x.get("date", "0000-00-00"))
+    #sorted_events = sorted(events, key=lambda x: x.get("date", "0000-00-00"))
+    sorted_events = sorted(events, key=sort_key)
     return list(enumerate(sorted_events, start=1))  # (1-based index, event)
 
 def get_local_json_files():
@@ -1091,11 +1111,13 @@ def build_popup_html(event):
         loc = html.escape(event['location']['name'])
     else:
         loc = html.escape("Location and Name ")
-
+    date_line = event['date']
+    if event.get('time'):
+        date_line += f"  •  {event['time']}"
     popup = f"""
     <div style="width:380px;max-height:550px;overflow-y:auto;padding:8px;font-family:sans-serif;">
         <h3 style="text-align:center;margin:0 0 8px 0;">{title}</h3>
-        <p style="text-align:center;color:#555;margin:0 0 10px 0;">{event['date']} • {loc}</p>
+        <p style="text-align:center;color:#555;margin:0 0 10px 0;">{date_line} • {loc}</p>
         <p style="line-height:1.4;margin-bottom:15px;">{desc}</p>
         <hr style="margin:15px 0;">
     """
@@ -1330,7 +1352,8 @@ def create_map():
         m = folium.Map(location=[20, 0], zoom_start=2, tiles="OpenStreetMap")
         return m
 
-    sorted_events = sorted(events, key=lambda x: x["date"])
+    #sorted_events = sorted(events, key=lambda x: x["date"])
+    sorted_events = sorted(events, key=sort_key)
     coords = [[e["location"]["latitude"], e["location"]["longitude"]] for e in sorted_events]
 
     m = folium.Map(tiles="OpenStreetMap")
@@ -1339,6 +1362,10 @@ def create_map():
     # Add numbered markers
     for idx, e in enumerate(sorted_events, start=1):
         escaped_desc = html.escape(f"{e['description']}")
+        tooltip_date_time = f"{idx}. {e['date']}"
+        if e.get('time'):
+            tooltip_date_time += f" {e['time']}"
+
         tooltip_html = f"""
                 <div style="
                     font-family: sans-serif;
@@ -1347,7 +1374,7 @@ def create_map():
                     padding: 8px;
                     line-height: 1.4;
                 ">
-                    <strong style="font-size: 15px;">{idx}.{e['date']} {html.escape(e['title'])} </strong>
+                    <strong style="font-size: 15px;">{tooltip_date_time} {html.escape(e['title'])} </strong>
                     <div style="
                         font-size: 14px;
                         color: #333;
@@ -1886,7 +1913,8 @@ local_json_files = get_local_json_files()
 # Calculate timeline year range (only if there are events)
 timeline_info = ""
 if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    #sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    sorted_events = sorted(data["events"], key = sort_key)
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
     if dates:
         start_year = min(dates).year
@@ -1906,7 +1934,8 @@ display_name = " ".join(word.capitalize() for word in display_name.split())
 memory_count = len(st.session_state.data.get("events", []))
 
 if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    #sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    sorted_events = sorted(data["events"], key = sort_key)
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
     start_year = min(dates).year
     end_year = max(dates).year
@@ -2118,7 +2147,8 @@ else:
 full_title = f"🌍 Journey ({display_name}) has {event_count} {place_text} {timeline_info}"
 # ==================== CENTER ON MARKER CONTROL ====================
 if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    #sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    sorted_events = sorted(data["events"], key = sort_key)
     col_title, col_reset, col_btn, col_num= st.columns([10, 1, 1, 1])
     #col1, col2 = st.columns([3, 1])
     with col_title:
@@ -2217,7 +2247,8 @@ if data["events"]:
 
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
-    sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    #sorted_events = sorted(data["events"], key=lambda x: x["date"])
+    sorted_events = sorted(data["events"], key = sort_key)
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
 
     if dates:
@@ -2240,21 +2271,26 @@ if data["events"]:
 
         timeline_html = '<div class="timeline-bar">'
 
+        current_date = None
         for idx, (event, dt) in enumerate(zip(sorted_events, dates), start=1):
-            position = ((dt - min_date).days / total_span) * 100
-            escaped_title = html.escape(event.get('title', 'Untitled'))
-            escaped_desc  = html.escape(event.get('description', 'Description:'))
-            timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
-            timeline_html += f'''
-            <div class="timeline-label-frame" style="left: {position}%;">
-                <div class="timeline-label">
-                    <strong>{idx}.</strong> <span>{event["date"]}</span>
-                    <div class="timeline-title">{escaped_title}</div>
-                    <div class="timeline-title">{escaped_desc}</div>
-                </div>
-            </div>
-            '''
+            if event["date"] != current_date:
+                current_date = event["date"]
 
+                position = ((dt - min_date).days / total_span) * 100
+                escaped_title = html.escape(event.get('title', 'Untitled'))
+                escaped_desc  = html.escape(event.get('description', 'Description:'))
+                timeline_html += f'<div class="timeline-tick" style="left: {position}%;"></div>'
+                timeline_html += f'''
+                <div class="timeline-label-frame" style="left: {position}%;">
+                    <div class="timeline-label">
+                        <strong>{idx}.</strong> <span>{event["date"]}</span>
+                        <div class="timeline-title">{escaped_title}</div>
+                        <div class="timeline-title">{escaped_desc}</div>
+                    </div>
+                </div>
+                '''
+            else:
+                pass
 
         timeline_html += '</div>'
         st.markdown(timeline_html, unsafe_allow_html=True)
@@ -2370,10 +2406,15 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
     st.sidebar.header("➕ Add New Memory")
     with st.sidebar.form("add_form", clear_on_submit=False):
         title = st.text_input("Title*", "")
-        date = st.date_input("Date*", datetime.today(),
-                             min_value= MIN_DATE,
-                             #min_value=datetime(1930, 1, 1).date(),
-                             max_value=MAX_DATE)
+        col_date, col_time = st.columns([2,1])
+        with col_date:
+            date = st.date_input("Date*", datetime.today(),
+                                 min_value= MIN_DATE,
+                                 #min_value=datetime(1930, 1, 1).date(),
+                                 max_value=MAX_DATE)
+        with col_time:
+            time_str = st.time_input("Time (optional)", value=None, step=60)  # or 900 for 15-min
+
         loc_name = st.text_input("Location Name*", default_name)
         description = st.text_area("Description")
         photos = st.file_uploader("Photos", accept_multiple_files=True, type=["jpg", "jpeg", "png", "gif", "heic", "HEIC", "heif", "HEIF"])
@@ -2428,6 +2469,7 @@ if not st.session_state.current_journey_locked and st.session_state.add_new_memo
                     "id": new_id,
                     "title": title,
                     "date": date.strftime("%Y-%m-%d"),
+                    "time": time_str.strftime("%H:%M") if time_str else None,
                     "location": {"name": loc_name, "latitude": lat, "longitude": lon},
                     "description": description,
                     "media": {"photos": photo_paths, "videos": video_paths}
@@ -2590,6 +2632,18 @@ else:
         log_msg = f"User logout | Name: {st.session_state.get('name', 'Unknown')} | Email: {st.session_state.get('email', 'unknown')}"
         append_to_log(log_msg, message_type="user_logout", throttle=False)  # no throttle on logout
         st.rerun()
+
+with st.expander("📜 Full chronological timeline", expanded=False):
+    prev_date = None
+    for idx, event in enumerate(sorted_events, start=1):
+        d = event.get("date", "—")
+        t = f" {event['time']}" if event.get("time") else ""
+
+        if d != prev_date:
+            st.markdown(f"**{d}**")
+            prev_date = d
+
+        st.markdown(f"• **{idx}.**{t} {event.get('title', 'Untitled')}")
 
 # ==================== SIDEBAR SUMMARY WITH EDIT AND DELETE BUTTONS ====================
 st.sidebar.subheader("✨ Journey Operations")
@@ -3411,14 +3465,17 @@ else:
 # ───────────────────────────────────────────────────────────────
 # Sidebar memory list with thumbnail previews
 # ───────────────────────────────────────────────────────────────
-sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+#sorted_events = sorted(st.session_state.data["events"], key=lambda x: x["date"])
+sorted_events = sorted(st.session_state.data["events"], key=sort_key)
 
 for idx, event in enumerate(sorted_events, start=1):
     expander_key = f"memory_expander_{event['id']}"
     is_editing_this = (st.session_state.get("editing_event_id") == event["id"])
-
+    time_str = f" {event['time']}" if event.get('time') else ""
+    expander_title = f"🔹 {idx}. {event['date']}{time_str} — {event['title']}"
     with st.sidebar.expander(
-            f"🔹 {idx}. {event['date']} — {event['title']}",
+            #f"🔹 {idx}. {event['date']} — {event['title']}",
+            expander_title,
             expanded=is_editing_this or st.session_state.get(f"force_open_{event['id']}", False)
     ):
         st.caption(f"📍 {event['location']['name']}")
@@ -3591,13 +3648,18 @@ for idx, event in enumerate(sorted_events, start=1):
                     # new_lon = st.number_input("Longitude", key=f"lon_{event['id']}", format="%.6f", step=0.000001)
 
                 new_title = st.text_input("Title", event["title"], key=f"title_{event['id']}")
-                new_date = st.date_input(
-                    "Date",
-                    datetime.strptime(event["date"], "%Y-%m-%d").date(),
-                    min_value=MIN_DATE,
-                    max_value=MAX_DATE,
-                    key=f"date_{event['id']}"
-                )
+                col_date, col_time = st.columns([2,1])
+                with col_date:
+                    new_date = st.date_input(
+                        "Date",
+                        datetime.strptime(event["date"], "%Y-%m-%d").date(),
+                        min_value=MIN_DATE,
+                        max_value=MAX_DATE,
+                        key=f"date_{event['id']}"
+                    )
+                with col_time:
+                    time_str = st.time_input("Time (optional)", value=None, step=60)  # or 900 for 15-min
+
                 new_loc_name = st.text_input("Location Name", event["location"]["name"],
                                              key=f"locname_{event['id']}")
                 new_desc = st.text_area("Description", event.get("description", ""),
@@ -3628,6 +3690,7 @@ for idx, event in enumerate(sorted_events, start=1):
                     event["location"]["longitude"] = new_lon
                     event["title"] = new_title
                     event["date"] = new_date.strftime("%Y-%m-%d")
+                    event["time"] = time_str.strftime("%H:%M") if time_str else None
                     event["location"]["name"] = new_loc_name
                     event["description"] = new_desc
 
