@@ -63,6 +63,7 @@ GCS_BUCKET_PREFIX = "https://storage.googleapis.com/journey-journal/"
 
 st.session_state.latitude = 1.11
 st.session_state.longitude = 1.11
+global_idx =0
 
 # ----------------------------
 # Config (use env vars or st.secrets)
@@ -2186,70 +2187,25 @@ if data["events"]:
                 else:
                     st.error("Invalid marker ID")
 
-    # =================== use .fit_bound approach ==== save for future improvements
-    # if event_count >= 15:
-    #     with col_num:
-    #         marker_id = st.number_input(
-    #             "Go to marker ID",
-    #             min_value=1,
-    #             max_value=len(sorted_events),
-    #             value=1,
-    #             step=1,
-    #             label_visibility="collapsed"
-    #         )
-    #
-    #     with col_btn:
-    #         if st.button("Marker =>"):
-    #             if 1 <= marker_id <= len(sorted_events):
-    #                 idx = marker_id - 1
-    #                 event = sorted_events[idx]
-    #
-    #                 try:
-    #                     lat = float(event["location"]["latitude"])
-    #                     lon = float(event["location"]["longitude"])
-    #
-    #                     # Small town-scale bounding box around the marker
-    #                     # ~0.08° padding ≈ 8–9 km radius — good for town overview
-    #                     pad = 0.08
-    #                     bounds = [
-    #                         [lat - pad, lon - pad],
-    #                         [lat + pad, lon + pad]
-    #                     ]
-    #
-    #                     # Apply fit_bounds to the current map
-    #                     main_map.fit_bounds(
-    #                         bounds,
-    #                         padding=(50, 70)  # slightly more bottom space
-    #                     )
-    #
-    #                     # Lock zoom to town scale
-    #                     main_map.options["minZoom"] = 11  # city/town overview
-    #                     main_map.options["maxZoom"] = 14  # neighborhood level
-    #
-    #                     # Force redraw
-    #                     st.session_state.force_map_refresh += 1
-    #
-    #                     st.success(
-    #                         f"Jumped to marker {marker_id}: {event['title']} ({event['date']})"
-    #                     )
-    #
-    #                     # Optional debug (uncomment if needed)
-    #                     # logger.info(f"DEBUG: Jump to marker {marker_id} | lat/lon = {lat}, {lon}")
-    #                     # logger.info(f"DEBUG: Applied bounds = {bounds}")
-    #
-    #                     st.rerun()
-    #
-    #                 except (KeyError, ValueError, TypeError) as e:
-    #                     st.error(f"Cannot jump to marker: invalid location ({e})")
-    #
-    #             else:
-    #                 st.error("Invalid marker ID")
-
 # ==================== TIMELINE BAR ON TOP ====================
 if data["events"]:
     #sorted_events = sorted(data["events"], key=lambda x: x["date"])
     sorted_events = sorted(data["events"], key = sort_key)
     dates = [datetime.strptime(e["date"], "%Y-%m-%d") for e in sorted_events]
+
+    # ────────────────────────────────────────────────────────────────
+    # Group events by date
+    # ────────────────────────────────────────────────────────────────
+
+    from collections import defaultdict
+
+    events_by_date = defaultdict(list)
+    for event in sorted_events:
+        events_by_date[event["date"]].append(event)
+
+    # Sort events within each day by time (if present)
+    for d in events_by_date:
+        events_by_date[d].sort(key=lambda e: e.get("time") or "99:99")
 
     if dates:
         #min_date = min(dates) - timedelta(days=365 * 2)
@@ -2276,6 +2232,13 @@ if data["events"]:
             if event["date"] != current_date:
                 current_date = event["date"]
 
+                # new code
+                day_events = events_by_date[current_date]
+                count = len(day_events)
+
+                #tooltip_lines = [f"{current_date} * {count} memories "]
+                tooltip_lines = []
+
                 position = ((dt - min_date).days / total_span) * 100
                 escaped_title = html.escape(event.get('title', 'Untitled'))
                 escaped_desc  = html.escape(event.get('description', 'Description:'))
@@ -2283,10 +2246,20 @@ if data["events"]:
                 timeline_html += f'''
                 <div class="timeline-label-frame" style="left: {position}%;">
                     <div class="timeline-label">
-                        <strong>{idx}.</strong> <span>{event["date"]}</span>
-                        <div class="timeline-title">{escaped_title}</div>
-                        <div class="timeline-title">{escaped_desc}</div>
-                    </div>
+                    <strong>{idx}.</strong> <span> {event["date"]}<br></span >'''
+
+                for idx_day, ev in enumerate(day_events, 1):
+                    global_idx += 1
+                    t = ev.get("time") or "—:—"
+                    title = html.escape(ev.get("title", "Untitled").strip())
+                    desc = html.escape(ev.get("description") or "").strip()
+                    desc_short = html.escape(desc[:80] + "...") if len(desc) > 80 else html.escape(desc)
+                    if idx_day == idx:
+                        timeline_html += f'<div class="timeline-title">{t}: {title}</div>'
+                    else:
+                        timeline_html += f'<div class="timeline-title">{global_idx}. {t}: {title}</div>'
+                    timeline_html += f'<div class="timeline-title">{desc_short}</div>'
+                timeline_html += f'''    </div>
                 </div>
                 '''
             else:
@@ -2302,10 +2275,6 @@ if data["events"]:
 else:
     #st.info("Add memories to see the extended timeline.")
     pass
-
-    #st.write("DEBUG: bf create_map Current map_center in session_state =", st.session_state.get("map_center"))
-    #st.write("DEBUG: bf create_map Current map_zoom   in session_state =", st.session_state.get("map_zoom"))
-    #st.write("DEBUG: bf create_map force_map_refresh counter =", st.session_state.force_map_refresh)
 
 # Conditionally pass center/zoom only if not default (allows fit_bounds to take effect initially)
 center = st.session_state.map_center if st.session_state.map_center != [20, 0] else None
